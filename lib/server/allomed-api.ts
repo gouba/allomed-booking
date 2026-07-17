@@ -2,6 +2,8 @@ import {
   BASE_PATH as CORE_PUBLIC_BASE_PATH,
   Configuration as CorePublicConfiguration,
   BookingApi,
+  PublicConsentsApi,
+  PublicFormsApi,
   type ConfigurationParameters as CorePublicConfigurationParameters,
 } from '@allomed-api/core-service-public-api';
 
@@ -21,4 +23,22 @@ export function createBookingApi(headers?: Record<string, string>) {
   };
 
   return new BookingApi(new CorePublicConfiguration(params));
+}
+
+export function createPublicFormsApi(headers?: Record<string, string>) {
+  const params: CorePublicConfigurationParameters = {
+    basePath: allomedApiBasePaths.corePublic,
+    headers,
+  };
+
+  return new PublicFormsApi(new CorePublicConfiguration(params));
+}
+
+export function createPublicConsentsApi(headers?: Record<string, string>) {
+  const params: CorePublicConfigurationParameters = {
+    basePath: allomedApiBasePaths.corePublic,
+    headers,
+  };
+
+  return new PublicConsentsApi(new CorePublicConfiguration(params));
 }

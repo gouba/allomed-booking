@@ -1,3 +1,16 @@
-export default function IntakePlaceholder() {
-  return <main className="shell"><section className="panel"><div className="hero"><h1>Intake forms</h1><p>This secure form link is reserved for the upcoming forms module.</p></div></section></main>;
+import { getPublicForm } from '@/lib/server/public-clinical';
+import PublicFormClient from './public-form-client';
+
+export default async function PublicFormPage({
+  params,
+}: {
+  params: Promise<{ token: string }>;
+}) {
+  const { token } = await params;
+  const form = await getPublicForm(token).catch((error) => ({
+    open: false,
+    closedReason: error instanceof Error ? error.message : 'INVALID_LINK',
+  }));
+
+  return <PublicFormClient token={token} form={form} />;
 }

@@ -103,10 +103,12 @@ export default function BookingFlow({
   const [resendStatus, setResendStatus] = useState<'idle' | 'submitting'>('idle');
   const [resendCooldown, setResendCooldown] = useState(60);
   const [marketingEmailOptIn, setMarketingEmailOptIn] = useState(false);
-  const [success, setSuccess] = useState<{ manageUrl: string } | null>(null);
+  const [success, setSuccess] = useState<{ manageUrl: string; pendingFormCount?: number; pendingConsentCount?: number } | null>(null);
   const [busy, setBusy] = useState(false);
   const autoStartedVerificationForPhone = useRef('');
   const [initialLoaded, setInitialLoaded] = useState(Boolean(initialClinic));
+  const [servicesLoading, setServicesLoading] = useState(false);
+  const [servicesLoadFailed, setServicesLoadFailed] = useState(false);
   const [loadingPractitioners, setLoadingPractitioners] = useState(false);
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [dayOffset, setDayOffset] = useState(0);
@@ -167,7 +169,22 @@ export default function BookingFlow({
     if (initialClinic) {
       setClinic(initialClinic);
       setServices(initialServices);
+      setServicesLoadFailed(false);
       setInitialLoaded(true);
+      if (initialServices.length === 0) {
+        setServicesLoading(true);
+        void corePublic<BookingService[]>(`/clinics/${clinicSlug}/services`)
+          .then((servicesPayload) => {
+            if (cancelled) return;
+            setServices(servicesPayload);
+          })
+          .catch(() => {
+            if (!cancelled) setServicesLoadFailed(true);
+          })
+          .finally(() => {
+            if (!cancelled) setServicesLoading(false);
+          });
+      }
       return () => {
         cancelled = true;
       };
@@ -182,8 +199,11 @@ export default function BookingFlow({
         if (cancelled) return;
         setClinic(clinicPayload);
         setServices(servicesPayload);
+        setServicesLoadFailed(false);
       })
-      .catch(() => null)
+      .catch(() => {
+        if (!cancelled) setServicesLoadFailed(true);
+      })
       .finally(() => {
         if (!cancelled) setInitialLoaded(true);
       });
@@ -456,7 +476,7 @@ export default function BookingFlow({
     if (!slot) return;
     setBusy(true);
     try {
-      const response = await corePublic<{ manageUrl: string }>(`/clinics/${clinicSlug}/appointments`, {
+      const response = await corePublic<{ manageUrl: string; pendingFormCount?: number; pendingConsentCount?: number }>(`/clinics/${clinicSlug}/appointments`, {
         method: 'POST',
         body: JSON.stringify({
           serviceId,
@@ -529,6 +549,10 @@ export default function BookingFlow({
           slot={slot ?? undefined}
           dateTimeSettings={dateTimeSettings}
         />
+        <BookingDocumentReadiness
+          pendingFormCount={success.pendingFormCount ?? 0}
+          pendingConsentCount={success.pendingConsentCount ?? 0}
+        />
         <a className="button" href={success.manageUrl}>Manage appointment</a>
       </Shell>
     );
@@ -576,7 +600,9 @@ export default function BookingFlow({
         <section className="wizard-step">
           <h2>Choose a service</h2>
           <div className="selection-list">
-            {availableServices.length === 0 ? <p className="muted">No services are available for this location.</p> : null}
+            {servicesLoading ? <p className="muted">Loading services...</p> : null}
+            {!servicesLoading && servicesLoadFailed ? <p className="muted">Services could not be loaded. Please refresh the page.</p> : null}
+            {!servicesLoading && !servicesLoadFailed && availableServices.length === 0 ? <p className="muted">No services are available for this location.</p> : null}
             {availableServices.map((service) => (
               <button key={service.id} className="selection-row service-row" type="button" onClick={() => void chooseService(service)}>
                 <span className="selection-title">{service.name}</span>
@@ -730,6 +756,31 @@ export default function BookingFlow({
         </section>
       ) : null}
     </Shell>
+  );
+}
+
+function BookingDocumentReadiness({
+  pendingFormCount,
+  pendingConsentCount,
+}: {
+  pendingFormCount: number;
+  pendingConsentCount: number;
+}) {
+  const hasPendingDocuments = pendingFormCount > 0 || pendingConsentCount > 0;
+
+  return (
+    <div className="card document-status-card">
+      <strong>{hasPendingDocuments ? 'Pre-appointment documents' : 'Documents ready'}</strong>
+      <div className="document-status-grid">
+        <span>{pendingFormCount} {pendingFormCount === 1 ? 'form' : 'forms'} pending</span>
+        <span>{pendingConsentCount} {pendingConsentCount === 1 ? 'consent' : 'consents'} pending</span>
+      </div>
+      <p className="muted">
+        {hasPendingDocuments
+          ? 'Use the secure links sent by your clinic to complete these before your appointment.'
+          : 'No pre-appointment forms or consents are pending.'}
+      </p>
+    </div>
   );
 }
 

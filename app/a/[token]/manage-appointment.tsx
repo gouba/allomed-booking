@@ -20,7 +20,7 @@ export type ManagedLocation = {
     countryCode?: string;
   };
 };
-export type Managed = { id: string; status: string; startAt: string; patientName: string; service?: { name: string }; practitioner?: { displayName: string }; location?: ManagedLocation; cancellationAllowed: boolean; rescheduleAllowed: boolean };
+export type Managed = { id: string; status: string; startAt: string; patientName: string; service?: { name: string }; practitioner?: { displayName: string }; location?: ManagedLocation; cancellationAllowed: boolean; rescheduleAllowed: boolean; pendingFormCount?: number; pendingConsentCount?: number };
 export type ManagedWithSettings = Managed & DateTimeSettings;
 
 export default function ManageAppointment({ token, initialAppointment = null }: { token: string; initialAppointment?: ManagedWithSettings | null }) {
@@ -54,6 +54,7 @@ export default function ManageAppointment({ token, initialAppointment = null }: 
         <p className="muted">{appointment.practitioner?.displayName}</p>
         {appointment.location ? <p className="muted">{formatLocation(appointment.location)}</p> : null}
       </div>
+      <PreAppointmentDocuments appointment={appointment} />
       <div className="actions">
         {appointment.cancellationAllowed ? (
           <button disabled={busy} onClick={cancel}>Cancel appointment</button>
@@ -63,6 +64,27 @@ export default function ManageAppointment({ token, initialAppointment = null }: 
         ) : null}
       </div>
     </Shell>
+  );
+}
+
+function PreAppointmentDocuments({ appointment }: { appointment: ManagedWithSettings }) {
+  const pendingFormCount = appointment.pendingFormCount ?? 0;
+  const pendingConsentCount = appointment.pendingConsentCount ?? 0;
+  const hasPendingDocuments = pendingFormCount > 0 || pendingConsentCount > 0;
+
+  return (
+    <div className="card document-status-card">
+      <strong>{hasPendingDocuments ? 'Pre-appointment documents' : 'Documents ready'}</strong>
+      <div className="document-status-grid">
+        <span>{pendingFormCount} {pendingFormCount === 1 ? 'form' : 'forms'} pending</span>
+        <span>{pendingConsentCount} {pendingConsentCount === 1 ? 'consent' : 'consents'} pending</span>
+      </div>
+      <p className="muted">
+        {hasPendingDocuments
+          ? 'Use the secure links sent by your clinic to complete these before your appointment.'
+          : 'No pre-appointment forms or consents are pending.'}
+      </p>
+    </div>
   );
 }
 

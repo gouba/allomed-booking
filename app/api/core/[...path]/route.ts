@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ResponseError } from '@allomed-api/core-service-public-api';
-import { allomedApiBasePaths, createBookingApi } from '@/lib/server/allomed-api';
+import {
+  allomedApiBasePaths,
+  createBookingApi,
+  createPublicConsentsApi,
+  createPublicFormsApi,
+} from '@/lib/server/allomed-api';
 
 type RouteContext = {
   params: Promise<{ path: string[] }>;
@@ -129,6 +134,41 @@ export async function GET(request: NextRequest, context: RouteContext) {
       return NextResponse.json(data);
     }
 
+    if (path[0] === 'forms' && path[1] && !path[2]) {
+      const data = await createPublicFormsApi(forwardedHeaders(request)).publicFormsGet({
+        token: path[1],
+      });
+      return NextResponse.json(data);
+    }
+
+    if (path[0] === 'consents' && path[1] && !path[2]) {
+      const data = await createPublicConsentsApi(forwardedHeaders(request)).publicConsentsGet({
+        token: path[1],
+      });
+      return NextResponse.json(data);
+    }
+
+    return notFound();
+  } catch (error) {
+    return jsonApiError(error, 'Core public request failed.');
+  }
+}
+
+export async function PUT(request: NextRequest, context: RouteContext) {
+  const path = await segmentsOf(context);
+
+  try {
+    if (path[0] === 'forms' && path[1] && path[2] === 'draft') {
+      const body = await readJson(request);
+      const data = await createPublicFormsApi(forwardedHeaders(request)).publicFormsSaveDraft({
+        token: path[1],
+        publicFormDraftRequestDTO: {
+          answers: body.answers ?? {},
+        },
+      });
+      return NextResponse.json(data);
+    }
+
     return notFound();
   } catch (error) {
     return jsonApiError(error, 'Core public request failed.');
@@ -214,6 +254,28 @@ export async function POST(request: NextRequest, context: RouteContext) {
         });
         return NextResponse.json(data);
       }
+    }
+
+    if (path[0] === 'forms' && path[1] && path[2] === 'submit') {
+      const body = await readJson(request);
+      const data = await createPublicFormsApi(forwardedHeaders(request)).publicFormsSubmit({
+        token: path[1],
+        publicFormSubmitRequestDTO: {
+          answers: body.answers ?? {},
+          submitterName: body.submitterName,
+          submittedByType: body.submittedByType,
+        },
+      });
+      return NextResponse.json(data);
+    }
+
+    if (path[0] === 'consents' && path[1] && path[2] === 'sign') {
+      const body = await readJson(request);
+      const data = await createPublicConsentsApi(forwardedHeaders(request)).publicConsentsSign({
+        token: path[1],
+        publicConsentSignRequestDTO: body,
+      });
+      return NextResponse.json(data);
     }
 
     if (path[0] === 'checkin' && path[1] && !path[2]) {
