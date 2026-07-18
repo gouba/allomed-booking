@@ -1,16 +1,16 @@
 # Allomed Booking
 
-Lightweight public patient-facing booking and appointment management app for Allomed.
+Lightweight public patient-facing booking and Care Page app for Allomed.
 
 This app is intentionally separate from the authenticated admin webapp. It is designed for `book.allomed.com` and runs locally on port `3002`.
 
 ## Responsibilities
 
 - Public clinic booking page at `/{clinicSlug}`.
-- Appointment management at `/a/{token}`.
-- Appointment rescheduling at `/a/{token}/reschedule`.
+- Passwordless patient Care Page at `/care/{token}`.
+- Session-backed Care Page application at `/care`.
 - First-delivery self check-in at `/checkin`.
-- Future placeholder routes for intake forms and payments.
+- Centralized patient access to appointments, forms, consents, documents, and future payments.
 - No login and no admin sidebar/layout.
 - Public clinic branding from Core: primary color and clinic logo URL.
 
@@ -19,12 +19,23 @@ This app is intentionally separate from the authenticated admin webapp. It is de
 ```text
 /                         Generic landing page
 /{clinicSlug}             Public booking flow
-/a/{token}                Manage/view/cancel appointment
-/a/{token}/reschedule     Reschedule appointment
+/care/{token}             Exchange a secure token for a Care Page session
+/care                     Session-backed patient Care Page
 /checkin                  Self check-in lookup and check-in
-/f/{token}                Future intake forms placeholder
-/p/{token}                Future payment placeholder
 ```
+
+Care Page links support navigation query parameters only:
+
+```text
+/care/{token}
+/care/{token}?view=appointments&resourceId={appointmentId}
+/care/{token}?view=forms&resourceId={formAssignmentId}
+/care/{token}?view=consents&resourceId={consentAssignmentId}
+/care/{token}?view=documents&resourceId={documentId}
+/care/{token}?view=payments&resourceId={paymentRequestId}
+```
+
+After session creation, the browser is redirected to `/care` with the same safe navigation parameters and without the raw token in the URL.
 
 ## Booking Flow
 
@@ -39,7 +50,7 @@ The `/{clinicSlug}` route performs the patient booking flow:
 7. Answer the clinic's additional booking question when enabled.
 8. Complete phone verification when required.
 9. Capture marketing email opt-in when configured.
-10. Confirm booking and show the manage appointment link.
+10. Confirm booking and show the Care Page appointment link.
 
 ## Core API Integration
 
@@ -70,9 +81,23 @@ GET  /clinics/{clinicSlug}/availability
 POST /clinics/{clinicSlug}/phone-verifications
 POST /clinics/{clinicSlug}/phone-verifications/confirm
 POST /clinics/{clinicSlug}/appointments
-GET  /appointments/{token}
-POST /appointments/{token}/cancel
-POST /appointments/{token}/reschedule
+POST /care/sessions
+DELETE /care/sessions
+GET  /care/bootstrap
+GET  /care/overview
+GET  /care/appointments
+GET  /care/appointments/{appointmentId}
+POST /care/appointments/{appointmentId}/cancel
+POST /care/appointments/{appointmentId}/reschedule
+GET  /care/forms
+GET  /care/forms/{assignmentId}
+PUT  /care/forms/{assignmentId}/draft
+POST /care/forms/{assignmentId}/submit
+GET  /care/consents
+GET  /care/consents/{assignmentId}
+POST /care/consents/{assignmentId}/sign
+GET  /care/documents
+GET  /care/documents/{documentId}/download
 POST /clinics/{clinicSlug}/checkin/lookup
 POST /clinics/{clinicSlug}/checkin
 ```
@@ -119,4 +144,4 @@ npm run build
 - The app is a standalone git repository.
 - `next.config.mjs` sets `turbopack.root` to this project directory so Next does not infer a parent workspace from unrelated lockfiles.
 - The current UI is intentionally lightweight and mobile-first. It should stay independent from the heavy admin webapp.
-- Real payment collection, full intake form rendering, and full patient portal expansion are intentionally deferred.
+- Payment collection remains hidden until the backend module is enabled.

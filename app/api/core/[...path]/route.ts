@@ -3,28 +3,21 @@ import { ResponseError } from '@allomed-api/core-service-public-api';
 import {
   allomedApiBasePaths,
   createBookingApi,
-  createPublicConsentsApi,
-  createPublicFormsApi,
 } from '@/lib/server/allomed-api';
 
 type RouteContext = {
   params: Promise<{ path: string[] }>;
 };
 
-function localDateTimeForApi(value?: string | null) {
-  if (!value) return undefined;
-  return {
-    toISOString: () => value,
-  } as Date;
-}
-
 function forwardedHeaders(request: NextRequest) {
   const forwardedFor = request.headers.get('x-forwarded-for');
   const realIp = request.headers.get('x-real-ip');
+  const cookie = request.headers.get('cookie');
 
   return {
     ...(forwardedFor ? { 'X-Forwarded-For': forwardedFor } : {}),
     ...(realIp ? { 'X-Real-IP': realIp } : {}),
+    ...(cookie ? { Cookie: cookie } : {}),
   };
 }
 
@@ -77,11 +70,55 @@ async function rawCoreJson(request: NextRequest, path: string) {
   return NextResponse.json(payload, { status: response.status });
 }
 
+async function proxyCore(request: NextRequest, path: string) {
+  const target = new URL(path, allomedApiBasePaths.corePublic);
+  request.nextUrl.searchParams.forEach((value, key) => {
+    target.searchParams.append(key, value);
+  });
+
+  const method = request.method.toUpperCase();
+  const response = await fetch(target, {
+    method,
+    headers: {
+      ...forwardedHeaders(request),
+      ...(method === 'GET' || method === 'HEAD' ? {} : { 'Content-Type': request.headers.get('content-type') ?? 'application/json' }),
+    },
+    body: method === 'GET' || method === 'HEAD' ? undefined : await request.text(),
+    cache: 'no-store',
+  });
+
+  const headers = new Headers();
+  headers.set('Cache-Control', 'no-store');
+  const contentType = response.headers.get('content-type');
+  if (contentType) headers.set('Content-Type', contentType);
+
+  const setCookies = (response.headers as Headers & { getSetCookie?: () => string[] }).getSetCookie?.();
+  if (setCookies?.length) {
+    setCookies.forEach((cookie) => headers.append('Set-Cookie', cookie));
+  } else {
+    const setCookie = response.headers.get('set-cookie');
+    if (setCookie) headers.append('Set-Cookie', setCookie);
+  }
+
+  if (response.status === 204) {
+    return new NextResponse(null, { status: response.status, headers });
+  }
+
+  return new NextResponse(await response.text(), {
+    status: response.status,
+    headers,
+  });
+}
+
 export async function GET(request: NextRequest, context: RouteContext) {
   const api = createBookingApi(forwardedHeaders(request));
   const path = await segmentsOf(context);
 
   try {
+    if (path[0] === 'care') {
+      return proxyCore(request, `/${path.map(encodeURIComponent).join('/')}`);
+    }
+
     if (path[0] === 'clinics' && path[1]) {
       const clinicSlug = path[1];
       const resource = path[2];
@@ -129,25 +166,6 @@ export async function GET(request: NextRequest, context: RouteContext) {
       }
     }
 
-    if (path[0] === 'appointments' && path[1] && !path[2]) {
-      const data = await api.bookingGetAppointment({ token: path[1] });
-      return NextResponse.json(data);
-    }
-
-    if (path[0] === 'forms' && path[1] && !path[2]) {
-      const data = await createPublicFormsApi(forwardedHeaders(request)).publicFormsGet({
-        token: path[1],
-      });
-      return NextResponse.json(data);
-    }
-
-    if (path[0] === 'consents' && path[1] && !path[2]) {
-      const data = await createPublicConsentsApi(forwardedHeaders(request)).publicConsentsGet({
-        token: path[1],
-      });
-      return NextResponse.json(data);
-    }
-
     return notFound();
   } catch (error) {
     return jsonApiError(error, 'Core public request failed.');
@@ -158,15 +176,8 @@ export async function PUT(request: NextRequest, context: RouteContext) {
   const path = await segmentsOf(context);
 
   try {
-    if (path[0] === 'forms' && path[1] && path[2] === 'draft') {
-      const body = await readJson(request);
-      const data = await createPublicFormsApi(forwardedHeaders(request)).publicFormsSaveDraft({
-        token: path[1],
-        publicFormDraftRequestDTO: {
-          answers: body.answers ?? {},
-        },
-      });
-      return NextResponse.json(data);
+    if (path[0] === 'care') {
+      return proxyCore(request, `/${path.map(encodeURIComponent).join('/')}`);
     }
 
     return notFound();
@@ -180,6 +191,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
   const path = await segmentsOf(context);
 
   try {
+    if (path[0] === 'care') {
+      return proxyCore(request, `/${path.map(encodeURIComponent).join('/')}`);
+    }
+
     if (path[0] === 'clinics' && path[1]) {
       const clinicSlug = path[1];
       const resource = path[2];
@@ -217,70 +232,16 @@ export async function POST(request: NextRequest, context: RouteContext) {
       }
 
       if (resource === 'checkin' && path[3] === 'lookup') {
-        const body = await readJson(request);
-        const data = await api.bookingLookupCheckIn({
-          clinicSlug,
-          checkInLookupRequestDTO: body,
-        });
-        return NextResponse.json(data);
+        return proxyCore(request, `/clinics/${encodeURIComponent(clinicSlug)}/checkin/lookup`);
       }
 
       if (resource === 'checkin' && !path[3]) {
-        const body = await readJson(request);
-        const data = await api.bookingCheckIn({
-          clinicSlug,
-          checkInRequestDTO: body,
-        });
-        return NextResponse.json(data);
+        return proxyCore(request, `/clinics/${encodeURIComponent(clinicSlug)}/checkin`);
       }
-    }
-
-    if (path[0] === 'appointments' && path[1]) {
-      const token = path[1];
-
-      if (path[2] === 'cancel') {
-        const data = await api.bookingCancelAppointment({ token });
-        return NextResponse.json(data);
-      }
-
-      if (path[2] === 'reschedule') {
-        const body = await readJson(request);
-        const data = await api.bookingRescheduleAppointment({
-          token,
-          rescheduleRequestDTO: {
-            ...body,
-            newStartAt: localDateTimeForApi(body.newStartAt),
-          },
-        });
-        return NextResponse.json(data);
-      }
-    }
-
-    if (path[0] === 'forms' && path[1] && path[2] === 'submit') {
-      const body = await readJson(request);
-      const data = await createPublicFormsApi(forwardedHeaders(request)).publicFormsSubmit({
-        token: path[1],
-        publicFormSubmitRequestDTO: {
-          answers: body.answers ?? {},
-          submitterName: body.submitterName,
-          submittedByType: body.submittedByType,
-        },
-      });
-      return NextResponse.json(data);
-    }
-
-    if (path[0] === 'consents' && path[1] && path[2] === 'sign') {
-      const body = await readJson(request);
-      const data = await createPublicConsentsApi(forwardedHeaders(request)).publicConsentsSign({
-        token: path[1],
-        publicConsentSignRequestDTO: body,
-      });
-      return NextResponse.json(data);
     }
 
     if (path[0] === 'checkin' && path[1] && !path[2]) {
-      const data = await api.bookingCheckInByToken({ token: path[1] });
-      return NextResponse.json(data);
+      return proxyCore(request, `/checkin/${encodeURIComponent(path[1])}`);
     }
 
     return notFound();
