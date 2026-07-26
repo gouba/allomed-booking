@@ -352,7 +352,8 @@ label {
   min-height: 120px;
   resize: vertical;
 }
-.document-field select {
+.document-field select,
+.other-choice-input {
   width: 100%;
   min-height: 48px;
   border: 1px solid var(--line);
@@ -395,6 +396,10 @@ label {
 .choice-stack {
   display: grid;
   gap: 10px;
+}
+.other-choice-input {
+  min-height: 40px;
+  padding: 9px 12px;
 }
 .safe-rich-text {
   color: var(--ink);
@@ -465,6 +470,29 @@ button.compact {
   background: #eff9f1;
   color: #1f6f34;
 }
+.care-dismissible-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-block: 10px;
+  padding-inline-end: 8px;
+}
+.care-notice-close {
+  flex: 0 0 auto;
+  width: 44px;
+  min-height: 44px;
+  border-color: transparent;
+  background: transparent;
+  color: currentColor;
+  padding: 0;
+}
+.care-notice-close:hover {
+  border-color: rgba(31, 111, 52, .16);
+  background: rgba(31, 111, 52, .08);
+  color: currentColor;
+  transform: none;
+}
 .notice.danger {
   border-color: #f3b4ad;
   background: #fff2f0;
@@ -474,6 +502,9 @@ button.compact {
 .care-entry-shell,
 .care-shell {
   place-items: start center;
+  width: 100%;
+  max-width: 100vw;
+  overflow-x: clip;
 }
 .care-entry-panel {
   max-width: 760px;
@@ -484,18 +515,20 @@ button.compact {
 }
 .care-panel {
   width: min(1180px, 100%);
+  min-width: 0;
+  max-width: 100%;
 }
 .care-header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 18px;
-  padding: 26px 28px 20px;
+  padding: 20px 28px 18px;
   border-bottom: 1px solid var(--line);
   background: linear-gradient(120deg, rgba(255, 255, 255, .98), rgba(231, 241, 239, .72));
 }
 .care-header h1 {
-  margin: 4px 0 8px;
+  margin: 0 0 8px;
   font-size: clamp(26px, 4vw, 42px);
   line-height: 1.05;
   letter-spacing: 0;
@@ -503,25 +536,119 @@ button.compact {
 .care-header p {
   margin: 0;
 }
+.care-sign-out {
+  min-height: 38px;
+  padding: 8px 11px;
+  color: var(--brand-dark);
+  font-size: 14px;
+  font-weight: 500;
+}
+.care-nav-shell {
+  position: relative;
+  min-width: 0;
+  max-width: 100%;
+  border-bottom: 1px solid var(--line);
+  background: rgba(255, 255, 255, .96);
+}
 .care-nav {
   display: flex;
+  width: 100%;
+  max-width: 100%;
+  flex-wrap: nowrap;
   gap: 8px;
   padding: 12px 18px;
-  border-bottom: 1px solid var(--line);
   overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  scroll-snap-type: x proximity;
+  white-space: nowrap;
+  -webkit-overflow-scrolling: touch;
 }
-.care-nav button {
+.care-nav::-webkit-scrollbar {
+  display: none;
+}
+.care-nav a {
+  display: inline-flex;
+  flex: 0 0 auto;
+  min-height: 40px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--brand);
+  padding: 9px 12px;
+  font-size: 14px;
+  font-weight: 700;
+  scroll-snap-align: start;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background .16s ease, border-color .16s ease, color .16s ease, transform .16s ease, box-shadow .16s ease;
+}
+.care-nav button,
+.care-nav a {
   flex: 0 0 auto;
   min-height: 40px;
   padding: 9px 12px;
   white-space: nowrap;
 }
-.care-nav button.active {
+.care-nav a:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+@media (hover: hover) and (pointer: fine) {
+  .care-nav a:hover {
+    border-color: var(--brand-strong);
+    background: var(--surface-soft);
+    color: var(--brand-strong);
+    transform: translateY(-1px);
+  }
+}
+.care-nav-badge {
+  display: inline-grid;
+  min-width: 20px;
+  height: 20px;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--brand);
+  color: #fff;
+  padding: 0 6px;
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+.care-nav button.active,
+.care-nav a.active {
   border-color: var(--brand);
   background: var(--brand-soft);
   color: var(--brand-dark);
+  box-shadow: inset 0 -2px 0 var(--brand);
+}
+.care-nav button.active .care-nav-badge,
+.care-nav a.active .care-nav-badge {
+  background: var(--brand-dark);
+}
+.care-nav-fade {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 2;
+  width: 30px;
+  pointer-events: none;
+}
+.care-nav-fade-left {
+  left: 0;
+  background: linear-gradient(90deg, rgba(255, 255, 255, .98), rgba(255, 255, 255, 0));
+}
+.care-nav-fade-right {
+  right: 0;
+  background: linear-gradient(270deg, rgba(255, 255, 255, .98), rgba(255, 255, 255, 0));
 }
 .care-content {
+  min-width: 0;
   padding: 24px 28px 30px;
 }
 .care-section,
@@ -531,32 +658,9 @@ button.compact {
   display: grid;
   gap: 16px;
 }
-.care-summary-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
-}
-.care-summary-tile {
-  display: grid;
-  gap: 4px;
-  min-height: 92px;
-  align-content: center;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--surface-soft);
-  padding: 16px;
-}
-.care-summary-tile strong {
-  font-size: 30px;
-  line-height: 1;
-}
-.care-summary-tile span {
-  color: var(--muted);
-  font-size: 13px;
-  font-weight: 600;
-}
 .care-block {
   display: grid;
+  min-width: 0;
   gap: 14px;
 }
 .care-block h2,
@@ -573,17 +677,66 @@ button.compact {
 .care-form-flow h3 {
   font-size: 16px;
 }
+.care-block h4 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0;
+}
 .care-block-heading {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
 }
+.care-section-link {
+  min-height: 36px;
+  border: 0;
+  background: transparent;
+  color: var(--brand);
+  padding: 6px 2px;
+  font-size: 14px;
+  font-weight: 500;
+}
+.care-section-link:hover {
+  border-color: transparent;
+  background: transparent;
+  color: var(--brand-strong);
+  text-decoration: underline;
+  transform: none;
+}
+.care-section-link:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 3px;
+}
+.care-icon-action {
+  width: 44px;
+  min-height: 44px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--muted);
+  padding: 0;
+}
+.care-icon-action:hover {
+  border-color: transparent;
+  background: var(--surface-soft);
+  color: var(--brand-dark);
+  transform: none;
+}
+.care-icon-action:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
 .care-two-column {
   display: grid;
   grid-template-columns: minmax(280px, .9fr) minmax(0, 1.35fr);
   gap: 22px;
   align-items: start;
+}
+.care-mobile-back {
+  display: none;
 }
 .care-list,
 .care-task-group {
@@ -606,8 +759,13 @@ button.compact {
   background: var(--surface-soft);
   color: var(--ink);
 }
+.care-list-item:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
 .care-list-item span {
   display: grid;
+  min-width: 0;
   gap: 4px;
 }
 .care-list-item small {
@@ -615,23 +773,379 @@ button.compact {
   font-size: 12px;
   font-weight: 600;
 }
+.care-priority-block {
+  border: 1px solid rgba(255, 193, 7, .35);
+  border-radius: var(--radius);
+  background: rgba(255, 247, 230, .52);
+  padding: 16px;
+}
+.care-task-row {
+  border-color: rgba(255, 193, 7, .34);
+  background: rgba(255, 255, 255, .86);
+}
+.care-task-row:hover {
+  border-color: var(--brand);
+  background: #fff;
+}
+.care-task-type {
+  color: var(--brand-dark);
+  font-weight: 700;
+}
+.care-row-action {
+  margin-left: auto;
+  color: var(--brand);
+  font-size: 13px;
+  white-space: nowrap;
+}
+.care-appointment-card {
+  min-height: 96px;
+  align-items: center;
+  padding: 14px 16px;
+}
+.care-appointment-group {
+  display: grid;
+  gap: 10px;
+}
+.care-appointment-group h3 {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+.care-appointment-list-card {
+  min-height: 72px;
+  padding: 12px 13px;
+}
+.care-appointment-list-card.active {
+  box-shadow: inset 3px 0 0 var(--brand);
+}
+.care-list-status {
+  width: fit-content;
+  color: var(--brand-dark) !important;
+  font-weight: 700 !important;
+}
+.care-appointment-main {
+  gap: 5px !important;
+}
+.care-appointment-title {
+  font-size: 16px;
+  line-height: 1.25;
+}
+.care-appointment-time {
+  color: var(--ink) !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+}
+.care-row-side {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  color: var(--muted);
+}
+.care-status-pill {
+  display: inline-flex !important;
+  align-items: center;
+  min-height: 28px;
+  border: 1px solid rgba(18, 113, 91, .18);
+  border-radius: 999px;
+  background: var(--brand-soft);
+  color: var(--brand-dark);
+  padding: 5px 9px;
+  font-size: 12px;
+  font-weight: 700;
+}
+.care-empty-state {
+  border-radius: var(--radius);
+  background: var(--surface-soft);
+  color: var(--muted);
+  padding: 18px;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.45;
+}
 .care-facts {
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: #fff;
   padding: 16px;
 }
-.care-facts span {
-  color: var(--muted);
+.care-appointment-summary {
+  display: grid;
+  gap: 18px;
 }
+.care-appointment-summary-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+.care-appointment-summary-head h3 {
+  margin: 0 0 8px;
+  font-size: 20px;
+  line-height: 1.2;
+}
+.care-summary-date,
+.care-summary-time {
+  margin: 0;
+}
+.care-summary-date {
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 600;
+}
+.care-summary-time {
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 600;
+}
+.care-fact-list,
+.reschedule-details {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+}
+.care-fact-row {
+  display: grid;
+  grid-template-columns: minmax(96px, 150px) minmax(0, 1fr);
+  align-items: baseline;
+  gap: 14px;
+}
+.care-fact-row dt,
+.care-fact-row dd {
+  margin: 0;
+}
+.care-fact-row dt {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+.care-fact-row dd {
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.4;
+  white-space: pre-line;
+}
+.care-actions-section {
+  display: grid;
+  gap: 10px;
+}
+.care-actions-section h3 {
+  margin: 0;
+}
+.reschedule-action-button {
+  border-color: var(--brand);
+  background: #fff;
+  color: var(--brand);
+}
+.reschedule-action-button:hover {
+  border-color: var(--brand);
+  background: var(--brand-soft);
+  color: var(--brand-dark);
+}
+.danger-action {
+  border-color: #f3b4ad !important;
+  color: #b42318 !important;
+}
+.danger-action:hover {
+  border-color: #d92d20 !important;
+  background: #fff2f0 !important;
+  color: #912018 !important;
+}
+.danger-confirm-action {
+  border-color: #b42318;
+  background: #b42318;
+  color: #fff;
+}
+.danger-confirm-action:hover {
+  border-color: #912018;
+  background: #912018;
+  color: #fff;
+}
+.care-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  background: rgba(14, 14, 15, .42);
+  padding: 24px;
+}
+.care-dialog {
+  width: min(720px, 100%);
+  max-height: min(760px, calc(100vh - 48px));
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #fff;
+  box-shadow: var(--shadow-panel);
+  padding: 20px;
+}
+.care-confirm-dialog {
+  width: min(480px, 100%);
+  padding: 18px;
+}
+.care-confirm-content {
+  display: grid;
+  gap: 14px;
+  padding-block: 6px;
+}
+.care-confirm-header {
+  display: grid;
+  gap: 6px;
+}
+.care-confirm-description {
+  display: grid;
+  gap: 6px;
+  padding-block: 8px;
+}
+.care-confirm-content h2 {
+  margin: 0;
+  font-size: 20px;
+  line-height: 1.25;
+  letter-spacing: 0;
+}
+.care-confirm-content p {
+  margin: 0;
+}
+.care-confirm-actions {
+  justify-content: flex-end;
+}
+.care-confirm-actions button {
+  min-height: 44px;
+  padding: 10px 14px;
+}
+.care-reschedule-flow,
 .care-reschedule {
+  display: grid;
+  gap: 14px;
+}
+.care-reschedule-flow h2 {
+  margin: 0;
+  font-size: 20px;
+  line-height: 44px;
+  letter-spacing: 0;
+}
+.care-reschedule-flow > .care-block-heading {
+  align-items: center;
+  flex-wrap: nowrap;
+}
+.care-reschedule-flow h3 {
+  margin: 0;
+  font-size: 15px;
+  letter-spacing: 0;
+}
+.reschedule-section {
+  display: grid;
+  gap: 10px;
+}
+.reschedule-date-row {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+.reschedule-date {
+  flex: 0 0 auto;
+  min-height: 52px;
+  border-color: var(--line);
+  background: #fff;
+  color: var(--ink);
+  padding: 8px 12px;
+}
+.reschedule-date span,
+.reschedule-date strong {
+  display: block;
+}
+.reschedule-date span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+.reschedule-date strong {
+  font-size: 13px;
+  font-weight: 700;
+}
+.reschedule-date.active {
+  border-color: var(--brand);
+  background: var(--brand-soft);
+  color: var(--brand-dark);
+  box-shadow: inset 0 -2px 0 var(--brand);
+}
+.reschedule-availability {
+  display: grid;
+  gap: 14px;
+}
+.reschedule-day-list {
+  display: grid;
+  gap: 20px;
+}
+.reschedule-day-section {
+  display: grid;
+  gap: 10px;
+}
+.reschedule-day-section h4 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 700;
+}
+.reschedule-more-heading {
+  margin-top: 6px;
+}
+.reschedule-times {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.reschedule-time {
+  min-height: 44px;
+  border: 1px solid rgba(var(--brand-rgb), .16);
+  border-radius: var(--radius-sm);
+  background: #fff;
+  color: var(--brand-dark);
+  padding: 9px 13px;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.2;
+  box-shadow: none;
+}
+.reschedule-time:hover,
+.reschedule-time.active {
+  border-color: var(--brand);
+  background: var(--brand);
+  color: #ffffff;
+  box-shadow: 0 0 0 2px rgba(var(--brand-rgb), .14);
+  transform: none;
+}
+.reschedule-empty {
+  margin: 0;
+}
+.reschedule-load-more {
+  justify-self: start;
+}
+.reschedule-bottom-loader {
+  justify-self: start;
+}
+.reschedule-confirmation {
   display: grid;
   gap: 10px;
   border-top: 1px solid var(--line);
   padding-top: 14px;
 }
+.reschedule-flow-actions {
+  justify-content: flex-end;
+}
 
 @media (max-width: 640px) {
+  .shell.care-shell {
+    padding: 14px 10px 28px;
+  }
+  .care-panel {
+    overflow: visible;
+  }
   .document-actions {
     display: grid;
   }
@@ -641,20 +1155,139 @@ button.compact {
   }
   .care-header {
     display: grid;
-    padding: 22px 18px 18px;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+    padding: 18px 18px 16px;
   }
-  .care-header button {
+  .care-header h1 {
+    overflow-wrap: anywhere;
+  }
+  .care-header button,
+  .care-sign-out {
     width: fit-content;
+    min-height: 44px;
   }
   .care-content {
     padding: 18px;
   }
-  .care-summary-grid,
   .care-two-column {
     grid-template-columns: 1fr;
   }
+  .care-appointments-layout {
+    width: 100%;
+  }
+  .care-appointment-list-panel,
+  .care-appointment-detail-panel {
+    width: 100%;
+  }
+  .care-mobile-back {
+    display: inline-flex;
+    width: fit-content;
+    min-height: 44px;
+    justify-content: flex-start;
+    border: 0;
+    background: transparent;
+    color: var(--brand);
+    padding: 6px 2px;
+    font-size: 14px;
+    font-weight: 600;
+  }
+  .care-mobile-back:hover {
+    border-color: transparent;
+    background: transparent;
+    color: var(--brand-strong);
+    text-decoration: underline;
+    transform: none;
+  }
+  [dir="rtl"] .care-mobile-back svg {
+    transform: scaleX(-1);
+  }
+  .care-mobile-reschedule-page,
+  .care-mobile-reschedule-page .care-reschedule-flow {
+    width: 100%;
+  }
+  .care-mobile-reschedule-page .care-icon-action {
+    display: none;
+  }
+  .care-dialog-overlay {
+    display: none;
+  }
+  .care-cancel-dialog-overlay {
+    display: grid;
+  }
+  .care-confirm-actions,
+  .care-confirm-actions button {
+    width: 100%;
+  }
+  .reschedule-date-row {
+    flex-wrap: wrap;
+    overflow-x: visible;
+  }
+  .reschedule-date {
+    flex: 1 1 132px;
+    min-width: 0;
+  }
+  .reschedule-flow-actions,
+  .reschedule-flow-actions button {
+    width: 100%;
+  }
+  .care-nav-shell {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    border-bottom-color: rgba(131, 131, 131, .32);
+    background: rgba(255, 255, 255, .98);
+    backdrop-filter: blur(10px);
+  }
   .care-nav {
-    padding-inline: 12px;
+    gap: 8px;
+    padding: 8px 16px;
+    scroll-padding-inline: 16px;
+  }
+  .care-nav a {
+    min-height: 44px;
+    padding: 10px 14px;
+    font-size: 14px;
+  }
+  .care-block-heading {
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .care-task-row,
+  .care-appointment-card {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+  }
+  .care-row-action {
+    grid-column: 1 / -1;
+    justify-self: start;
+    margin-left: 0;
+  }
+  .care-row-side {
+    align-self: start;
+    flex-wrap: wrap;
+  }
+  .care-appointment-card .care-row-side {
+    align-self: center;
+  }
+  .care-appointment-summary-head,
+  .care-fact-row {
+    grid-template-columns: 1fr;
+  }
+  .care-appointment-summary-head {
+    display: grid;
+  }
+  .care-fact-row {
+    gap: 4px;
+  }
+  .care-actions-section .actions,
+  .care-actions-section button {
+    width: 100%;
+  }
+  .reschedule-date-row {
+    margin-inline: -2px;
+    padding-inline: 2px;
   }
 }
 .notice p { margin: 0 0 12px; }
@@ -1024,87 +1657,6 @@ button.compact {
   color: #b42318;
   padding: 10px 12px;
 }
-.reschedule-availability {
-  display: grid;
-  gap: 22px;
-}
-.reschedule-availability h2,
-.reschedule-day h3 {
-  margin: 0;
-  color: var(--ink);
-  letter-spacing: 0;
-}
-.reschedule-availability h2 {
-  font-size: 18px;
-  font-weight: 600;
-}
-.reschedule-day {
-  display: grid;
-  gap: 12px;
-}
-.reschedule-day h3 {
-  font-size: 16px;
-  font-weight: 500;
-}
-.reschedule-more-heading {
-  margin-top: 12px !important;
-}
-.reschedule-times {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-.reschedule-time {
-  min-height: 32px;
-  border: 1px solid rgba(var(--brand-rgb), .16);
-  border-radius: var(--radius-sm);
-  background: var(--brand-soft);
-  color: var(--brand-dark);
-  padding: 6px 11px;
-  font-size: 14px;
-  font-weight: 600;
-  line-height: 1.2;
-  box-shadow: none;
-}
-.reschedule-time:hover,
-.reschedule-time.active {
-  border-color: var(--brand);
-  background: var(--brand);
-  color: #ffffff;
-  box-shadow: 0 0 0 2px rgba(var(--brand-rgb), .14);
-  transform: none;
-}
-.reschedule-empty {
-  margin: 0;
-}
-.reschedule-confirmation {
-  display: grid;
-  gap: 20px;
-}
-.reschedule-details {
-  margin: 0;
-}
-.reschedule-detail-row {
-  display: grid;
-  grid-template-columns: minmax(120px, 180px) minmax(0, 1fr);
-  gap: 18px;
-  padding: 14px 0;
-}
-.reschedule-detail-row dt,
-.reschedule-detail-row dd {
-  margin: 0;
-}
-.reschedule-detail-row dt {
-  color: var(--muted);
-  font-size: 13px;
-  font-weight: 600;
-}
-.reschedule-detail-row dd {
-  color: var(--ink);
-  font-size: 15px;
-  font-weight: 500;
-  line-height: 1.4;
-}
 @keyframes wizard-enter {
   from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }
@@ -1125,10 +1677,10 @@ button.compact {
     gap: 6px;
     overflow-x: auto;
   }
-  .reschedule-times { gap: 5px; }
+  .reschedule-times { gap: 6px; }
   .reschedule-time {
-    min-height: 31px;
-    padding: 6px 9px;
+    min-height: 44px;
+    padding: 8px 10px;
     font-size: 13px;
   }
   .reschedule-detail-row {

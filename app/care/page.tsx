@@ -10,11 +10,13 @@ export default async function CarePage({ searchParams }: CarePageProps) {
   const query = await searchParams;
   const view = first(query.view);
   const resourceId = first(query.resourceId);
+  const action = first(query.action);
 
   return (
     <CarePageClient
       initialView={view && allowedViews.includes(view as CareView) ? (view as CareView) : 'overview'}
       initialResourceId={resourceId}
+      initialAction={action === 'reschedule' ? action : undefined}
     />
   );
 }

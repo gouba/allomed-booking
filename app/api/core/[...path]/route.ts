@@ -72,6 +72,15 @@ async function rawCoreJson(request: NextRequest, path: string) {
 
 async function proxyCore(request: NextRequest, path: string) {
   const target = new URL(path, allomedApiBasePaths.corePublic);
+  return proxy(request, target);
+}
+
+async function proxyChart(request: NextRequest, path: string) {
+  const target = new URL(path, allomedApiBasePaths.chartPublic);
+  return proxy(request, target);
+}
+
+async function proxy(request: NextRequest, target: URL) {
   request.nextUrl.searchParams.forEach((value, key) => {
     target.searchParams.append(key, value);
   });
@@ -110,12 +119,19 @@ async function proxyCore(request: NextRequest, path: string) {
   });
 }
 
+function isChartCarePath(path: string[]) {
+  return path[0] === 'care' && ['forms', 'consents', 'documents'].includes(path[1] ?? '');
+}
+
 export async function GET(request: NextRequest, context: RouteContext) {
   const api = createBookingApi(forwardedHeaders(request));
   const path = await segmentsOf(context);
 
   try {
     if (path[0] === 'care') {
+      if (isChartCarePath(path)) {
+        return proxyChart(request, `/${path.map(encodeURIComponent).join('/')}`);
+      }
       return proxyCore(request, `/${path.map(encodeURIComponent).join('/')}`);
     }
 
@@ -177,6 +193,9 @@ export async function PUT(request: NextRequest, context: RouteContext) {
 
   try {
     if (path[0] === 'care') {
+      if (isChartCarePath(path)) {
+        return proxyChart(request, `/${path.map(encodeURIComponent).join('/')}`);
+      }
       return proxyCore(request, `/${path.map(encodeURIComponent).join('/')}`);
     }
 
@@ -192,6 +211,9 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
   try {
     if (path[0] === 'care') {
+      if (isChartCarePath(path)) {
+        return proxyChart(request, `/${path.map(encodeURIComponent).join('/')}`);
+      }
       return proxyCore(request, `/${path.map(encodeURIComponent).join('/')}`);
     }
 

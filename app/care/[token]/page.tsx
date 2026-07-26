@@ -12,12 +12,14 @@ export default async function CareTokenPage({ params, searchParams }: CareTokenP
   const query = await searchParams;
   const view = first(query.view);
   const resourceId = first(query.resourceId);
+  const action = first(query.action);
 
   return (
     <CareTokenBootstrap
       token={token}
       view={view && allowedViews.has(view) ? view : undefined}
       resourceId={resourceId}
+      action={action === 'reschedule' ? action : undefined}
     />
   );
 }

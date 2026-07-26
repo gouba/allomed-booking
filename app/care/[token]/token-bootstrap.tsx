@@ -8,10 +8,12 @@ export default function CareTokenBootstrap({
   token,
   view,
   resourceId,
+  action,
 }: {
   token: string;
   view?: string;
   resourceId?: string;
+  action?: string;
 }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
@@ -19,9 +21,10 @@ export default function CareTokenBootstrap({
     const params = new URLSearchParams();
     if (view) params.set('view', view);
     if (resourceId) params.set('resourceId', resourceId);
+    if (action === 'reschedule' && resourceId) params.set('action', action);
     const query = params.toString();
     return query ? `/care?${query}` : '/care';
-  }, [resourceId, view]);
+  }, [action, resourceId, view]);
 
   useEffect(() => {
     let active = true;
@@ -31,6 +34,7 @@ export default function CareTokenBootstrap({
       try {
         const response = await fetch('/api/core/care/sessions', {
           method: 'POST',
+          credentials: 'same-origin',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ token }),
           cache: 'no-store',

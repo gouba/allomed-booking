@@ -6,7 +6,8 @@
     "dev": "next dev -p 3002",
     "build": "next build",
     "start": "next start -p 3002",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "test": "vitest run"
   },
   "dependencies": {
     "@allomed-api/core-service-public-api": "file:./vendor/allomed-api/core-service-public-api",
@@ -14,14 +15,19 @@
     "next": "16.1.6",
     "react": "^19.2.1",
     "react-dom": "^19.2.1",
-    "react-international-phone": "^4.8.0"
+    "react-international-phone": "^4.8.0",
+    "undici": "^7.22.0"
   },
   "devDependencies": {
+    "@testing-library/react": "^16.3.2",
     "@types/node": "^24.0.7",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.4",
     "eslint": "^9.30.0",
     "eslint-config-next": "15.3.4",
-    "typescript": "^5.8.3"
+    "jsdom": "^29.1.1",
+    "typescript": "^5.8.3",
+    "vitest": "^4.1.10"
   }
 }

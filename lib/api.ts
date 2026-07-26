@@ -2,6 +2,7 @@ export async function corePublic<T>(path: string, init?: RequestInit): Promise<T
   const normalizedPath = path.startsWith('/') ? path : `/${path}`;
   const response = await fetch(`/api/core${normalizedPath}`, {
     ...init,
+    credentials: 'same-origin',
     headers: {
       'Content-Type': 'application/json',
       ...(init?.headers ?? {}),
