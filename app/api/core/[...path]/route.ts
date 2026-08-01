@@ -205,6 +205,23 @@ export async function PUT(request: NextRequest, context: RouteContext) {
   }
 }
 
+export async function PATCH(request: NextRequest, context: RouteContext) {
+  const path = await segmentsOf(context);
+
+  try {
+    if (path[0] === 'care') {
+      if (isChartCarePath(path)) {
+        return proxyChart(request, `/${path.map(encodeURIComponent).join('/')}`);
+      }
+      return proxyCore(request, `/${path.map(encodeURIComponent).join('/')}`);
+    }
+
+    return notFound();
+  } catch (error) {
+    return jsonApiError(error, 'Core public request failed.');
+  }
+}
+
 export async function POST(request: NextRequest, context: RouteContext) {
   const api = createBookingApi(forwardedHeaders(request));
   const path = await segmentsOf(context);

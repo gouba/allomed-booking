@@ -1,8 +1,17 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { LockKeyhole, RotateCw } from 'lucide-react';
+import { LockKeyhole } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { ContentLoader } from '@/components/common/content-loader';
+
+const invalidLinkMessage = 'This secure link is invalid or has expired.';
+
+function publicLinkErrorMessage(message: unknown) {
+  if (typeof message !== 'string' || !message) return invalidLinkMessage;
+  if (message.startsWith('INVALID_OR_EXPIRED') || message.startsWith('CARE_SESSION')) return invalidLinkMessage;
+  return message;
+}
 
 export default function CareTokenBootstrap({
   token,
@@ -41,12 +50,12 @@ export default function CareTokenBootstrap({
         });
         const payload = await response.json().catch(() => ({}));
         if (!response.ok) {
-          throw new Error(payload.message || 'This secure link is invalid or has expired.');
+          throw new Error(publicLinkErrorMessage(payload.message));
         }
         if (active) router.replace(target);
       } catch (bootstrapError) {
         if (active) {
-          setError(bootstrapError instanceof Error ? bootstrapError.message : 'This secure link is invalid or has expired.');
+          setError(bootstrapError instanceof Error ? publicLinkErrorMessage(bootstrapError.message) : invalidLinkMessage);
         }
       }
     }
@@ -72,12 +81,7 @@ export default function CareTokenBootstrap({
           {error ? (
             <div className="notice danger">{error}</div>
           ) : (
-            <div className="content-loader">
-              <div className="content-loader-inner">
-                <RotateCw className="content-loader-icon" />
-                Loading
-              </div>
-            </div>
+            <ContentLoader label="Setting up your Care Page..." />
           )}
         </div>
       </section>

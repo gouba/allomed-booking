@@ -326,10 +326,27 @@ label {
   display: grid;
   gap: 16px;
 }
-.document-section h2 {
+.document-section h2,
+.document-section h3 {
   margin: 0;
   font-size: 18px;
   line-height: 1.25;
+}
+.document-section h3 {
+  color: var(--ink);
+  font-weight: 700;
+}
+.document-section-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 10px;
+}
+.document-section-description {
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.35;
 }
 .document-section-title {
   display: flex;
@@ -344,9 +361,23 @@ label {
   display: grid;
   gap: 8px;
 }
+.document-field > .field-label {
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.35;
+}
 .document-field small {
   color: var(--muted);
   font-weight: 400;
+}
+.document-field > .field-description {
+  display: block;
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.35;
 }
 .document-field textarea {
   min-height: 120px;
@@ -423,6 +454,176 @@ label {
   gap: 12px;
   flex-wrap: wrap;
 }
+.care-forms-landing {
+  width: min(860px, 100%);
+  justify-self: center;
+  max-width: 860px;
+}
+.care-form-group h3 {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+.care-form-card {
+  min-height: 70px;
+  padding: 12px 14px;
+}
+.care-form-card.disabled {
+  cursor: default;
+  opacity: 1;
+}
+.care-form-card.disabled:hover {
+  border-color: var(--line);
+  background: #fff;
+  transform: none;
+}
+.care-form-completion-shell {
+  width: min(900px, 100%);
+  justify-self: center;
+  align-self: start;
+}
+.care-form-back {
+  width: fit-content;
+  min-height: 44px;
+  justify-content: flex-start;
+  border: 0;
+  background: transparent;
+  color: var(--brand);
+  padding: 6px 2px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.care-form-back:hover {
+  border-color: transparent;
+  background: transparent;
+  color: var(--brand-strong);
+  text-decoration: underline;
+  transform: none;
+}
+.care-form-back:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 3px;
+}
+[dir="rtl"] .care-form-back svg {
+  transform: scaleX(-1);
+}
+.care-form-title {
+  display: grid;
+  gap: 8px;
+}
+.care-form-title h2 {
+  margin: 0;
+  font-size: 24px;
+  line-height: 1.2;
+  letter-spacing: 0;
+}
+.care-form-progress {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+.care-form-flow {
+  min-width: 0;
+}
+.care-form-columns {
+  display: grid;
+  grid-template-columns: var(--care-form-columns-template);
+  align-items: start;
+  gap: 14px;
+  min-width: 0;
+}
+.care-form-columns > .document-field {
+  align-self: start;
+  align-content: start;
+  min-width: 0;
+}
+.care-form-information {
+  gap: 8px;
+}
+.care-form-information .safe-rich-text {
+  color: var(--text);
+}
+.care-choice-field {
+  min-inline-size: 0;
+  margin: 0;
+  border: 0;
+  padding: 0;
+}
+.care-choice-field > .choice-stack {
+  gap: 6px;
+  margin-top: 0;
+}
+.care-form-flow .document-field input:not([type="checkbox"]):not([type="radio"]),
+.care-form-flow .document-field select {
+  min-height: 46px;
+  padding-block: 10px;
+}
+.care-form-flow .checkbox-line {
+  align-items: center;
+  gap: 8px;
+  min-height: 24px;
+  font-size: 15px;
+  line-height: 1.35;
+}
+.care-form-flow .checkbox-line > input[type="checkbox"],
+.care-form-flow .checkbox-line > input[type="radio"] {
+  appearance: auto;
+  flex: 0 0 18px;
+  width: 18px;
+  min-width: 18px;
+  height: 18px;
+  min-height: 18px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  accent-color: var(--brand);
+}
+.care-form-flow .checkbox-line > input[type="checkbox"]:focus,
+.care-form-flow .checkbox-line > input[type="radio"]:focus {
+  box-shadow: none;
+}
+.care-form-flow .checkbox-line > input[type="checkbox"]:focus-visible,
+.care-form-flow .checkbox-line > input[type="radio"]:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 3px;
+}
+.care-form-flow .checkbox-line > span {
+  min-width: 0;
+}
+.care-form-flow .checkbox-line > .other-choice-input {
+  margin-inline-start: 6px;
+}
+.care-form-flow .choice-option-label {
+  display: inline;
+  min-width: 0;
+  gap: 0;
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.35;
+  cursor: pointer;
+}
+.care-form-action-footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  justify-content: flex-end;
+  background: rgba(255, 255, 255, .96);
+  padding: 12px 0 max(12px, env(safe-area-inset-bottom));
+  backdrop-filter: blur(10px);
+}
+.care-form-action-footer .actions {
+  justify-content: flex-end;
+}
+.care-form-action-footer button {
+  min-height: 44px;
+  padding: 10px 14px;
+}
 .autosave-status {
   margin: 0;
 }
@@ -480,16 +681,19 @@ button.compact {
 }
 .care-notice-close {
   flex: 0 0 auto;
-  width: 44px;
-  min-height: 44px;
-  border-color: transparent;
+  width: 32px;
+  min-height: 32px;
+  border: 0;
+  border-radius: 50%;
   background: transparent;
+  box-shadow: none;
   color: currentColor;
   padding: 0;
 }
 .care-notice-close:hover {
-  border-color: rgba(31, 111, 52, .16);
-  background: rgba(31, 111, 52, .08);
+  border: 0;
+  background: transparent;
+  box-shadow: none;
   color: currentColor;
   transform: none;
 }
@@ -1212,8 +1416,31 @@ button.compact {
   .care-dialog-overlay {
     display: none;
   }
+  .care-submit-dialog-overlay,
   .care-cancel-dialog-overlay {
     display: grid;
+  }
+  .care-form-completion-shell {
+    width: 100%;
+  }
+  .care-form-title h2 {
+    font-size: 22px;
+  }
+  .care-form-columns {
+    grid-template-columns: 1fr;
+  }
+  .care-form-action-footer {
+    margin-inline: -18px;
+    padding-inline: 18px;
+  }
+  .care-form-action-footer,
+  .care-form-action-footer .actions,
+  .care-form-action-footer button {
+    width: 100%;
+  }
+  .care-form-action-footer .actions {
+    display: grid;
+    grid-template-columns: 1fr;
   }
   .care-confirm-actions,
   .care-confirm-actions button {

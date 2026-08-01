@@ -1,7 +1,16 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type ReactNode,
+} from 'react';
 import {
   ArrowLeft,
   ArrowRight,
@@ -31,9 +40,14 @@ import type {
 } from '@allomed-api/core-service-public-api';
 import { ContentLoader } from '@/components/common/content-loader';
 import { corePublic } from '@/lib/api';
-import { formatClinicDate, formatClinicDateTime, formatClinicTime } from '@/lib/date-time-format';
+import {
+  formatClinicDate,
+  formatClinicDateTime,
+  formatClinicTime,
+} from '@/lib/date-time-format';
 
-export type CareView = 'overview' | 'appointments' | 'forms' | 'consents' | 'documents' | 'payments';
+export type CareView =
+  'overview' | 'appointments' | 'forms' | 'consents' | 'documents' | 'payments';
 
 type NavItem = {
   view: CareView;
@@ -53,10 +67,60 @@ type Field = {
   required?: boolean;
   options?: Option[];
 };
-type Section = { id: string; label?: LocalizedText; description?: LocalizedText; fields: Field[] };
+type ColumnsNode = {
+  id: string;
+  type: 'COLUMNS';
+  ratios?: number[];
+  children?: Field[];
+};
+type SchemaNode = Field | ColumnsNode;
+type Section = {
+  id: string;
+  label?: LocalizedText;
+  title?: LocalizedText;
+  description?: LocalizedText;
+  fields: SchemaNode[];
+};
 type ClinicalSchema = { sections: Section[] };
 type Answers = Record<string, unknown>;
 type FieldErrors = Record<string, string>;
+const DEFAULT_INFORMATION_TEXT = 'Information text';
+type CareFormListItem = CareFormSummaryDTO & {
+  closedReason?: string;
+  completedAt?: string;
+  formName?: string;
+  name?: string;
+  submittedAt?: string;
+  responseSubmittedAt?: string;
+  templateName?: string;
+  templateTitle?: string;
+};
+type CareFormTitleSource = Pick<
+  CareFormListItem,
+  'title' | 'name' | 'formName' | 'templateTitle' | 'templateName'
+>;
+type PublicFormWithAnswers = PublicFormDTO & {
+  submission?: {
+    answers?: Answers;
+  };
+};
+type PatientFormState =
+  | { group: 'toComplete'; labelKey: 'completeForm'; actionable: true }
+  | { group: 'inProgress'; labelKey: 'continueForm'; actionable: true }
+  | {
+      group: 'completed';
+      labelKey: 'viewCompletedForm';
+      actionable: true;
+      completedAt?: string;
+    }
+  | { group: 'expired'; labelKey: 'expired'; actionable: false }
+  | { group: 'withdrawn'; labelKey: 'withdrawnByClinic'; actionable: false }
+  | {
+      group: 'noLongerAvailable';
+      labelKey: 'noLongerAvailable';
+      actionable: false;
+    }
+  | { group: 'hidden'; labelKey: 'noLongerAvailable'; actionable: false };
 type PendingTask = {
   id: string;
   view: 'forms' | 'consents';
@@ -74,8 +138,19 @@ type CareNavigationOptions = {
   mode?: CareNavigationMode;
 };
 
-const pendingFormStatuses = new Set(['ASSIGNED', 'SENT', 'OPENED', 'IN_PROGRESS']);
+const pendingFormStatuses = new Set([
+  'ASSIGNED',
+  'SENT',
+  'OPENED',
+  'IN_PROGRESS',
+]);
 const pendingConsentStatuses = new Set(['REQUESTED', 'SENT', 'OPENED']);
+const formToCompleteStatuses = new Set(['ASSIGNED', 'SENT', 'OPENED']);
+const formInProgressStatuses = new Set(['IN_PROGRESS', 'DRAFT']);
+const formCompletedStatuses = new Set(['SUBMITTED', 'REVIEWED', 'COMPLETED']);
+const formExpiredStatuses = new Set(['EXPIRED']);
+const formWithdrawnStatuses = new Set(['WITHDRAWN', 'CANCELLED', 'REVOKED']);
+const formNoLongerAvailableStatuses = new Set(['SUPERSEDED', 'UNAVAILABLE']);
 const INITIAL_RESCHEDULE_DAY_COUNT = 7;
 const RESCHEDULE_DAY_LOAD_COUNT = 7;
 const MAX_RESCHEDULE_DAY_COUNT = 14;
@@ -101,6 +176,7 @@ type CareCopyKey =
   | 'carePageUnavailable'
   | 'carePageSections'
   | 'careSessionRequired'
+  | 'careSessionExpired'
   | 'cancelAppointment'
   | 'cancelAppointmentClinicNotified'
   | 'cancelAppointmentConfirm'
@@ -110,13 +186,17 @@ type CareCopyKey =
   | 'cancelAppointmentTitle'
   | 'cancelNoLongerAllowed'
   | 'cancellingAppointment'
+  | 'backToForms'
   | 'keepAppointment'
   | 'chooseAnotherTime'
   | 'chooseAnotherDate'
   | 'chooseAppointment'
   | 'completeForm'
+  | 'completed'
+  | 'completedOn'
   | 'confirmReschedule'
   | 'continue'
+  | 'continueForm'
   | 'consent'
   | 'consents'
   | 'contactClinic'
@@ -124,16 +204,37 @@ type CareCopyKey =
   | 'currentAppointment'
   | 'documents'
   | 'dismissAppointmentMessage'
+  | 'dismissFormMessage'
   | 'documentFallback'
   | 'dueDate'
   | 'duration'
   | 'durationMinutes'
   | 'forNextAppointment'
   | 'form'
+  | 'formNoLongerAvailable'
   | 'forms'
+  | 'formSubmitReviewDescription'
+  | 'formSubmitTitle'
+  | 'formSubmittedSuccess'
+  | 'formSubmitError'
+  | 'formSaveError'
+  | 'formProgressSaved'
+  | 'formSaving'
+  | 'formRequiredField'
+  | 'formSectionsProgress'
+  | 'expired'
   | 'keepCurrentAppointment'
   | 'loadAppointmentsError'
+  | 'loadingAppointment'
+  | 'loadingAppointmentList'
   | 'loadingAvailableTimes'
+  | 'loadingCarePage'
+  | 'loadingConsent'
+  | 'loadingConsentList'
+  | 'loadingDocumentList'
+  | 'loadingForm'
+  | 'loadingFormList'
+  | 'loadingOverview'
   | 'loadMoreAvailability'
   | 'location'
   | 'moreAvailability'
@@ -141,6 +242,8 @@ type CareCopyKey =
   | 'newTime'
   | 'noAppointments'
   | 'noAvailableTimes'
+  | 'noForms'
+  | 'noLongerAvailable'
   | 'overview'
   | 'overviewError'
   | 'payments'
@@ -149,6 +252,7 @@ type CareCopyKey =
   | 'pendingFormsCount'
   | 'pendingNavBadge'
   | 'practitioner'
+  | 'previousSection'
   | 'recentDocuments'
   | 'rescheduleAppointment'
   | 'rescheduleAppointmentError'
@@ -157,11 +261,18 @@ type CareCopyKey =
   | 'rescheduleSlotUnavailable'
   | 'rescheduleUnavailable'
   | 'reviewAndSign'
+  | 'reviewForm'
   | 'seeAllAppointments'
   | 'seeAllDocuments'
   | 'selectedTime'
   | 'signOut'
+  | 'submitForm'
+  | 'saveProgress'
   | 'thingsToComplete'
+  | 'toComplete'
+  | 'inProgress'
+  | 'viewCompletedForm'
+  | 'withdrawnByClinic'
   | 'upcomingAppointments'
   | 'virtualAppointment'
   | 'withPractitioner'
@@ -188,22 +299,32 @@ const careCopy = {
     carePageUnavailable: 'Care Page unavailable',
     carePageSections: 'Care page sections',
     careSessionRequired: 'Care Page session required.',
+    careSessionExpired:
+      'Your secure Care Page session has expired. Please reopen your secure link.',
     cancelAppointment: 'Cancel appointment',
-    cancelAppointmentClinicNotified: 'The clinic will be notified of the cancellation.',
+    cancelAppointmentClinicNotified:
+      'The clinic will be notified of the cancellation.',
     cancelAppointmentConfirm: 'Cancel this appointment?',
-    cancelAppointmentDescription: 'Are you sure you want to cancel this appointment?',
-    cancelAppointmentError: 'We could not cancel the appointment. Please try again.',
+    cancelAppointmentDescription:
+      'Are you sure you want to cancel this appointment?',
+    cancelAppointmentError:
+      'We could not cancel the appointment. Please try again.',
     cancelAppointmentSuccess: 'Your appointment has been cancelled.',
     cancelAppointmentTitle: 'Cancel appointment?',
     cancelNoLongerAllowed: 'This appointment can no longer be cancelled.',
     cancellingAppointment: 'Cancelling...',
+    backToForms: 'Back to forms',
     keepAppointment: 'Keep appointment',
     chooseAnotherTime: 'Choose another time',
     chooseAnotherDate: 'Choose another date',
-    chooseAppointment: 'Choose an appointment from the list to view its details.',
+    chooseAppointment:
+      'Choose an appointment from the list to view its details.',
     completeForm: 'Complete form',
+    completed: 'Completed',
+    completedOn: 'Completed {date}',
     confirmReschedule: 'Confirm reschedule',
     continue: 'Continue',
+    continueForm: 'Continue form',
     consent: 'Consent',
     consents: 'Consents',
     contactClinic: 'Contact the clinic to request a new secure link.',
@@ -211,16 +332,37 @@ const careCopy = {
     currentAppointment: 'Current appointment',
     documents: 'Documents',
     dismissAppointmentMessage: 'Dismiss appointment message',
+    dismissFormMessage: 'Dismiss form message',
     documentFallback: 'Document',
     dueDate: 'Due {date}',
     duration: 'Duration',
     durationMinutes: '{count} minutes',
     forNextAppointment: 'For your next appointment',
     form: 'Form',
+    formNoLongerAvailable: 'This form is no longer available.',
     forms: 'Forms',
+    formSubmitReviewDescription: 'Review your answers before submitting.',
+    formSubmitTitle: 'Submit this form?',
+    formSubmittedSuccess: 'Your form has been submitted',
+    formSubmitError: 'We could not submit the form. Please try again.',
+    formSaveError: 'We could not save your progress. Please try again.',
+    formProgressSaved: 'Progress saved',
+    formSaving: 'Saving...',
+    formRequiredField: 'Required field.',
+    formSectionsProgress: '{current} of {total} sections',
+    expired: 'Expired',
     keepCurrentAppointment: 'Keep current appointment',
     loadAppointmentsError: 'Unable to load appointments.',
+    loadingAppointment: 'Loading appointment...',
+    loadingAppointmentList: 'Loading appointment list...',
     loadingAvailableTimes: 'Loading available times...',
+    loadingCarePage: 'Loading Care Page...',
+    loadingConsent: 'Loading consent...',
+    loadingConsentList: 'Loading consent list...',
+    loadingDocumentList: 'Loading document list...',
+    loadingForm: 'Loading form...',
+    loadingFormList: 'Loading form list...',
+    loadingOverview: 'Loading overview...',
     loadMoreAvailability: 'Load more',
     location: 'Location',
     moreAvailability: 'More availability',
@@ -228,6 +370,8 @@ const careCopy = {
     newTime: 'New time',
     noAppointments: 'You do not have any appointments yet.',
     noAvailableTimes: 'No available times were found for this date.',
+    noForms: 'You do not have any forms right now.',
+    noLongerAvailable: 'No longer available',
     overview: 'Overview',
     overviewError: 'Unable to load your Care Page overview.',
     payments: 'Payments',
@@ -236,19 +380,28 @@ const careCopy = {
     pendingFormsCount: '{count} pending forms',
     pendingNavBadge: '{label}, {count} pending',
     practitioner: 'Practitioner',
+    previousSection: 'Previous section',
     recentDocuments: 'Recent documents',
     rescheduleAppointment: 'Reschedule appointment',
     rescheduleAppointmentError: 'Unable to reschedule this appointment.',
     rescheduleAppointmentSuccess: 'Your appointment has been rescheduled.',
     rescheduleNoLongerAllowed: 'This appointment can no longer be rescheduled.',
     rescheduleSlotUnavailable: 'This time is no longer available.',
-    rescheduleUnavailable: 'Available times cannot be loaded for this appointment.',
+    rescheduleUnavailable:
+      'Available times cannot be loaded for this appointment.',
     reviewAndSign: 'Review and sign',
+    reviewForm: 'Review form',
     seeAllAppointments: 'See all appointments',
     seeAllDocuments: 'See all documents',
     selectedTime: 'Selected time',
     signOut: 'Sign out',
+    submitForm: 'Submit form',
+    saveProgress: 'Save progress',
     thingsToComplete: 'Things to complete',
+    toComplete: 'To complete',
+    inProgress: 'In progress',
+    viewCompletedForm: 'View completed form',
+    withdrawnByClinic: 'Withdrawn by the clinic',
     upcomingAppointments: 'Upcoming',
     virtualAppointment: 'Virtual appointment',
     withPractitioner: 'With {practitioner}',
@@ -274,46 +427,83 @@ const careCopy = {
     carePageUnavailable: 'Page de soins indisponible',
     carePageSections: 'Sections de la page de soins',
     careSessionRequired: 'Session de page de soins requise.',
+    careSessionExpired:
+      'Votre session securisee de page de soins a expire. Veuillez rouvrir votre lien securise.',
     cancelAppointment: 'Annuler le rendez-vous',
-    cancelAppointmentClinicNotified: 'La clinique sera informee de l annulation.',
+    cancelAppointmentClinicNotified:
+      'La clinique sera informee de l annulation.',
     cancelAppointmentConfirm: 'Annuler ce rendez-vous ?',
-    cancelAppointmentDescription: 'Voulez-vous vraiment annuler ce rendez-vous ?',
-    cancelAppointmentError: 'Nous n avons pas pu annuler le rendez-vous. Veuillez reessayer.',
+    cancelAppointmentDescription:
+      'Voulez-vous vraiment annuler ce rendez-vous ?',
+    cancelAppointmentError:
+      'Nous n avons pas pu annuler le rendez-vous. Veuillez reessayer.',
     cancelAppointmentSuccess: 'Votre rendez-vous a ete annule.',
     cancelAppointmentTitle: 'Annuler le rendez-vous ?',
     cancelNoLongerAllowed: 'Ce rendez-vous ne peut plus etre annule.',
     cancellingAppointment: 'Annulation...',
+    backToForms: 'Retour aux formulaires',
     keepAppointment: 'Garder le rendez-vous',
     chooseAnotherTime: 'Choisir une autre heure',
     chooseAnotherDate: 'Choisir une autre date',
-    chooseAppointment: 'Choisissez un rendez-vous dans la liste pour voir ses details.',
+    chooseAppointment:
+      'Choisissez un rendez-vous dans la liste pour voir ses details.',
     completeForm: 'Remplir le formulaire',
+    completed: 'Termine',
+    completedOn: 'Termine le {date}',
     confirmReschedule: 'Confirmer le changement',
     continue: 'Continuer',
+    continueForm: 'Continuer le formulaire',
     consent: 'Consentement',
     consents: 'Consentements',
-    contactClinic: 'Contactez la clinique pour demander un nouveau lien securise.',
+    contactClinic:
+      'Contactez la clinique pour demander un nouveau lien securise.',
     currentTime: 'Heure actuelle',
     currentAppointment: 'Rendez-vous actuel',
     documents: 'Documents',
     dismissAppointmentMessage: 'Fermer le message de rendez-vous',
+    dismissFormMessage: 'Fermer le message de formulaire',
     documentFallback: 'Document',
     dueDate: 'A faire avant le {date}',
     duration: 'Duree',
     durationMinutes: '{count} minutes',
     forNextAppointment: 'Pour votre prochain rendez-vous',
     form: 'Formulaire',
+    formNoLongerAvailable: 'Ce formulaire n est plus disponible.',
     forms: 'Formulaires',
+    formSubmitReviewDescription: 'Verifiez vos reponses avant de soumettre.',
+    formSubmitTitle: 'Soumettre ce formulaire ?',
+    formSubmittedSuccess: 'Votre formulaire a ete soumis',
+    formSubmitError:
+      'Nous n avons pas pu soumettre le formulaire. Veuillez reessayer.',
+    formSaveError:
+      'Nous n avons pas pu enregistrer votre progression. Veuillez reessayer.',
+    formProgressSaved: 'Progression enregistree',
+    formSaving: 'Enregistrement...',
+    formRequiredField: 'Champ obligatoire.',
+    formSectionsProgress: '{current} sur {total} sections',
+    expired: 'Expire',
     keepCurrentAppointment: 'Garder le rendez-vous actuel',
     loadAppointmentsError: 'Impossible de charger les rendez-vous.',
+    loadingAppointment: 'Chargement du rendez-vous...',
+    loadingAppointmentList: 'Chargement de la liste des rendez-vous...',
     loadingAvailableTimes: 'Chargement des heures disponibles...',
+    loadingCarePage: 'Chargement de la page de soins...',
+    loadingConsent: 'Chargement du consentement...',
+    loadingConsentList: 'Chargement de la liste des consentements...',
+    loadingDocumentList: 'Chargement de la liste des documents...',
+    loadingForm: 'Chargement du formulaire...',
+    loadingFormList: 'Chargement de la liste des formulaires...',
+    loadingOverview: 'Chargement de l accueil...',
     loadMoreAvailability: 'Charger plus',
     location: 'Lieu',
     moreAvailability: 'Plus de disponibilites',
     nextAppointment: 'Prochain rendez-vous',
     newTime: 'Nouvelle heure',
     noAppointments: 'Vous n avez pas encore de rendez-vous.',
-    noAvailableTimes: 'Aucune heure disponible n a ete trouvee pour cette date.',
+    noAvailableTimes:
+      'Aucune heure disponible n a ete trouvee pour cette date.',
+    noForms: 'Vous n avez aucun formulaire pour le moment.',
+    noLongerAvailable: 'Plus disponible',
     overview: 'Accueil',
     overviewError: 'Impossible de charger votre accueil.',
     payments: 'Paiements',
@@ -322,19 +512,28 @@ const careCopy = {
     pendingFormsCount: '{count} formulaires en attente',
     pendingNavBadge: '{label}, {count} en attente',
     practitioner: 'Praticien',
+    previousSection: 'Section precedente',
     recentDocuments: 'Documents recents',
     rescheduleAppointment: 'Deplacer le rendez-vous',
     rescheduleAppointmentError: 'Impossible de deplacer ce rendez-vous.',
     rescheduleAppointmentSuccess: 'Votre rendez-vous a ete deplace.',
     rescheduleNoLongerAllowed: 'Ce rendez-vous ne peut plus etre deplace.',
     rescheduleSlotUnavailable: 'Cette heure n est plus disponible.',
-    rescheduleUnavailable: 'Les heures disponibles ne peuvent pas etre chargees pour ce rendez-vous.',
+    rescheduleUnavailable:
+      'Les heures disponibles ne peuvent pas etre chargees pour ce rendez-vous.',
     reviewAndSign: 'Verifier et signer',
+    reviewForm: 'Verifier le formulaire',
     seeAllAppointments: 'Voir tous les rendez-vous',
     seeAllDocuments: 'Voir tous les documents',
     selectedTime: 'Heure choisie',
     signOut: 'Se deconnecter',
+    submitForm: 'Soumettre le formulaire',
+    saveProgress: 'Enregistrer la progression',
     thingsToComplete: 'A completer',
+    toComplete: 'A completer',
+    inProgress: 'En cours',
+    viewCompletedForm: 'Voir le formulaire termine',
+    withdrawnByClinic: 'Retire par la clinique',
     upcomingAppointments: 'A venir',
     virtualAppointment: 'Rendez-vous virtuel',
     withPractitioner: 'Avec {practitioner}',
@@ -344,11 +543,14 @@ const careCopy = {
 } satisfies Record<string, Record<CareCopyKey, string>>;
 
 function itemsResponse<T>(value: ItemsResponse<T>): T[] {
-  return Array.isArray(value) ? value : value.items ?? [];
+  return Array.isArray(value) ? value : (value.items ?? []);
 }
 
 function careLocale() {
-  if (typeof navigator !== 'undefined' && navigator.language.toLowerCase().startsWith('fr')) {
+  if (
+    typeof navigator !== 'undefined' &&
+    navigator.language.toLowerCase().startsWith('fr')
+  ) {
     return 'fr';
   }
   return 'en';
@@ -362,14 +564,26 @@ function t(key: CareCopyKey, params?: Record<string, string | number>) {
   return value;
 }
 
+function careSessionErrorMessage(error: unknown) {
+  if (!(error instanceof Error)) return t('careSessionRequired');
+  if (error.message.startsWith('CARE_SESSION')) return t('careSessionExpired');
+  return error.message;
+}
+
 function isRescheduleNoLongerAllowedError(error: unknown) {
   if (!(error instanceof Error)) return false;
-  return ['APPOINTMENT_NOT_RESCHEDULABLE', 'APPOINTMENT_HAS_NO_SERVICE', 'SERVICE_NOT_BOOKABLE'].includes(error.message);
+  return [
+    'APPOINTMENT_NOT_RESCHEDULABLE',
+    'APPOINTMENT_HAS_NO_SERVICE',
+    'SERVICE_NOT_BOOKABLE',
+  ].includes(error.message);
 }
 
 function isCancelNoLongerAllowedError(error: unknown) {
   if (!(error instanceof Error)) return false;
-  return ['APPOINTMENT_NOT_CANCELLABLE', 'APPOINTMENT_NOT_FOUND'].includes(error.message);
+  return ['APPOINTMENT_NOT_CANCELLABLE', 'APPOINTMENT_NOT_FOUND'].includes(
+    error.message,
+  );
 }
 
 function positiveCount(value: number | undefined) {
@@ -379,7 +593,13 @@ function positiveCount(value: number | undefined) {
 function patientGreeting(bootstrap: CareBootstrapDTO) {
   const firstName = bootstrap.patient?.firstName?.trim();
   if (firstName) return t('welcome', { firstName });
-  const displayName = [bootstrap.patient?.firstName, bootstrap.patient?.lastName].filter(Boolean).join(' ').trim();
+  const displayName = [
+    bootstrap.patient?.firstName,
+    bootstrap.patient?.lastName,
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .trim();
   return displayName || '';
 }
 
@@ -394,21 +614,36 @@ type Bounds = {
   right: number;
 };
 
-export function careNavScrollAvailability(metrics: ScrollMetrics, threshold = 2) {
+export function careNavScrollAvailability(
+  metrics: ScrollMetrics,
+  threshold = 2,
+) {
   return {
     canScrollLeft: metrics.scrollLeft > threshold,
-    canScrollRight: metrics.scrollLeft + metrics.clientWidth < metrics.scrollWidth - threshold,
+    canScrollRight:
+      metrics.scrollLeft + metrics.clientWidth <
+      metrics.scrollWidth - threshold,
   };
 }
 
-export function careNavRevealScrollLeft(container: Bounds, item: Bounds, scrollLeft: number, maxScrollLeft: number, threshold = 2) {
+export function careNavRevealScrollLeft(
+  container: Bounds,
+  item: Bounds,
+  scrollLeft: number,
+  maxScrollLeft: number,
+  threshold = 2,
+) {
   if (maxScrollLeft <= 0) return 0;
 
   const containerWidth = container.right - container.left;
   const itemWidth = item.right - item.left;
   const itemOffset = item.left - container.left;
-  const centeredScrollLeft = scrollLeft + itemOffset - (containerWidth - itemWidth) / 2;
-  const nextScrollLeft = Math.abs(centeredScrollLeft - scrollLeft) < threshold ? scrollLeft : centeredScrollLeft;
+  const centeredScrollLeft =
+    scrollLeft + itemOffset - (containerWidth - itemWidth) / 2;
+  const nextScrollLeft =
+    Math.abs(centeredScrollLeft - scrollLeft) < threshold
+      ? scrollLeft
+      : centeredScrollLeft;
 
   return Math.max(0, Math.min(maxScrollLeft, nextScrollLeft));
 }
@@ -422,30 +657,53 @@ function visualBadgeCount(count: number) {
 }
 
 function navItemAriaLabel(item: NavItem) {
-  return item.badgeCount ? t('pendingNavBadge', { label: item.label, count: item.badgeCount }) : item.label;
+  return item.badgeCount
+    ? t('pendingNavBadge', { label: item.label, count: item.badgeCount })
+    : item.label;
 }
 
 function careNavHref(view: CareView) {
-  return view === 'overview' ? '/care' : `/care?view=${encodeURIComponent(view)}`;
+  return view === 'overview'
+    ? '/care'
+    : `/care?view=${encodeURIComponent(view)}`;
 }
 
 function careHref(view: CareView, resourceId?: string, action?: CareAction) {
   const params = new URLSearchParams();
   if (view !== 'overview') params.set('view', view);
   if (resourceId) params.set('resourceId', resourceId);
-  if (view === 'appointments' && resourceId && action) params.set('action', action);
+  if (view === 'appointments' && resourceId && action)
+    params.set('action', action);
   const query = params.toString();
   return query ? `/care?${query}` : '/care';
 }
 
-const allowedCareViews = new Set<CareView>(['overview', 'appointments', 'forms', 'consents', 'documents', 'payments']);
+const allowedCareViews = new Set<CareView>([
+  'overview',
+  'appointments',
+  'forms',
+  'consents',
+  'documents',
+  'payments',
+]);
 
-function parseCareRoute(searchParams: URLSearchParams): { view: CareView; resourceId?: string; action?: CareAction; invalidAction: boolean } {
+function parseCareRoute(searchParams: URLSearchParams): {
+  view: CareView;
+  resourceId?: string;
+  action?: CareAction;
+  invalidAction: boolean;
+} {
   const routeView = searchParams.get('view');
-  const nextView = routeView && allowedCareViews.has(routeView as CareView) ? (routeView as CareView) : 'overview';
+  const nextView =
+    routeView && allowedCareViews.has(routeView as CareView)
+      ? (routeView as CareView)
+      : 'overview';
   const resourceId = searchParams.get('resourceId') || undefined;
   const routeAction = searchParams.get('action');
-  const action = nextView === 'appointments' && resourceId && routeAction === 'reschedule' ? routeAction : undefined;
+  const action =
+    nextView === 'appointments' && resourceId && routeAction === 'reschedule'
+      ? routeAction
+      : undefined;
   return {
     view: nextView,
     resourceId,
@@ -458,9 +716,14 @@ function useCareNavigationScroll(activeView: CareView, items: NavItem[]) {
   const containerRef = useRef<HTMLElement | null>(null);
   const tabRefs = useRef(new Map<CareView, HTMLAnchorElement>());
   const frameRef = useRef<number | null>(null);
-  const [scrollState, setScrollState] = useState({ canScrollLeft: false, canScrollRight: false });
+  const [scrollState, setScrollState] = useState({
+    canScrollLeft: false,
+    canScrollRight: false,
+  });
   const [containerVersion, setContainerVersion] = useState(0);
-  const itemsSignature = items.map((item) => `${item.view}:${item.badgeCount ?? 0}`).join('|');
+  const itemsSignature = items
+    .map((item) => `${item.view}:${item.badgeCount ?? 0}`)
+    .join('|');
 
   const setContainerRef = useCallback((node: HTMLElement | null) => {
     containerRef.current = node;
@@ -476,11 +739,12 @@ function useCareNavigationScroll(activeView: CareView, items: NavItem[]) {
       clientWidth: metrics.clientWidth,
       scrollWidth: metrics.scrollWidth,
     });
-    setScrollState((current) => (
-      current.canScrollLeft === next.canScrollLeft && current.canScrollRight === next.canScrollRight
+    setScrollState((current) =>
+      current.canScrollLeft === next.canScrollLeft &&
+      current.canScrollRight === next.canScrollRight
         ? current
-        : next
-    ));
+        : next,
+    );
   }, []);
 
   const updateScrollState = useCallback(() => {
@@ -501,39 +765,47 @@ function useCareNavigationScroll(activeView: CareView, items: NavItem[]) {
     });
   }, [updateScrollState]);
 
-  const revealTab = useCallback((nextView: CareView) => {
-    const container = containerRef.current;
-    const tab = tabRefs.current.get(nextView);
-    if (!container || !tab) return;
+  const revealTab = useCallback(
+    (nextView: CareView) => {
+      const container = containerRef.current;
+      const tab = tabRefs.current.get(nextView);
+      if (!container || !tab) return;
 
-    const nextScrollLeft = careNavRevealScrollLeft(
-      container.getBoundingClientRect(),
-      tab.getBoundingClientRect(),
-      container.scrollLeft,
-      Math.max(0, container.scrollWidth - container.clientWidth),
-    );
+      const nextScrollLeft = careNavRevealScrollLeft(
+        container.getBoundingClientRect(),
+        tab.getBoundingClientRect(),
+        container.scrollLeft,
+        Math.max(0, container.scrollWidth - container.clientWidth),
+      );
 
-    applyScrollState({
-      scrollLeft: nextScrollLeft,
-      clientWidth: container.clientWidth,
-      scrollWidth: container.scrollWidth,
-    });
+      applyScrollState({
+        scrollLeft: nextScrollLeft,
+        clientWidth: container.clientWidth,
+        scrollWidth: container.scrollWidth,
+      });
 
-    if (Math.abs(nextScrollLeft - container.scrollLeft) < 1) return;
-    const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
-    container.scrollTo({
-      left: nextScrollLeft,
-      behavior: careNavScrollBehavior(reducedMotion),
-    });
-  }, [applyScrollState]);
+      if (Math.abs(nextScrollLeft - container.scrollLeft) < 1) return;
+      const reducedMotion =
+        window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ===
+        true;
+      container.scrollTo({
+        left: nextScrollLeft,
+        behavior: careNavScrollBehavior(reducedMotion),
+      });
+    },
+    [applyScrollState],
+  );
 
-  const setTabRef = useCallback((viewName: CareView, node: HTMLAnchorElement | null) => {
-    if (node) {
-      tabRefs.current.set(viewName, node);
-    } else {
-      tabRefs.current.delete(viewName);
-    }
-  }, []);
+  const setTabRef = useCallback(
+    (viewName: CareView, node: HTMLAnchorElement | null) => {
+      if (node) {
+        tabRefs.current.set(viewName, node);
+      } else {
+        tabRefs.current.delete(viewName);
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
     const container = containerRef.current;
@@ -542,7 +814,10 @@ function useCareNavigationScroll(activeView: CareView, items: NavItem[]) {
     updateScrollState();
     container.addEventListener('scroll', scheduleUpdate, { passive: true });
     window.addEventListener('resize', scheduleUpdate);
-    const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(scheduleUpdate) : null;
+    const observer =
+      typeof ResizeObserver !== 'undefined'
+        ? new ResizeObserver(scheduleUpdate)
+        : null;
     observer?.observe(container);
 
     return () => {
@@ -559,7 +834,13 @@ function useCareNavigationScroll(activeView: CareView, items: NavItem[]) {
   useEffect(() => {
     revealTab(activeView);
     updateScrollState();
-  }, [activeView, containerVersion, itemsSignature, revealTab, updateScrollState]);
+  }, [
+    activeView,
+    containerVersion,
+    itemsSignature,
+    revealTab,
+    updateScrollState,
+  ]);
 
   return {
     containerRef: setContainerRef,
@@ -582,8 +863,14 @@ export default function CarePageClient({
   const searchParams = useSearchParams();
   const [bootstrap, setBootstrap] = useState<CareBootstrapDTO | null>(null);
   const [view, setView] = useState<CareView>(initialView);
-  const [resourceId, setResourceId] = useState<string | undefined>(initialResourceId);
-  const [action, setAction] = useState<CareAction | undefined>(initialView === 'appointments' && initialResourceId ? initialAction : undefined);
+  const [resourceId, setResourceId] = useState<string | undefined>(
+    initialResourceId,
+  );
+  const [action, setAction] = useState<CareAction | undefined>(
+    initialView === 'appointments' && initialResourceId
+      ? initialAction
+      : undefined,
+  );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -597,7 +884,7 @@ export default function CarePageClient({
     setLoading(true);
     refreshBootstrap()
       .catch((loadError) => {
-        if (active) setError(loadError instanceof Error ? loadError.message : 'Care Page session required.');
+        if (active) setError(careSessionErrorMessage(loadError));
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -610,7 +897,9 @@ export default function CarePageClient({
   useEffect(() => {
     const next = parseCareRoute(new URLSearchParams(searchParams.toString()));
     setView((current) => (current === next.view ? current : next.view));
-    setResourceId((current) => (current === next.resourceId ? current : next.resourceId));
+    setResourceId((current) =>
+      current === next.resourceId ? current : next.resourceId,
+    );
     setAction((current) => (current === next.action ? current : next.action));
     if (next.invalidAction) {
       router.replace(careHref(next.view, next.resourceId));
@@ -634,8 +923,18 @@ export default function CarePageClient({
     const available = bootstrap?.navigation;
     const summary = bootstrap?.summary;
     const items: NavItem[] = [
-      { view: 'overview', label: t('overview'), icon: <Home size={17} />, enabled: available?.overview !== false },
-      { view: 'appointments', label: t('appointments'), icon: <CalendarDays size={17} />, enabled: available?.appointments !== false },
+      {
+        view: 'overview',
+        label: t('overview'),
+        icon: <Home size={17} />,
+        enabled: available?.overview !== false,
+      },
+      {
+        view: 'appointments',
+        label: t('appointments'),
+        icon: <CalendarDays size={17} />,
+        enabled: available?.appointments !== false,
+      },
       {
         view: 'forms',
         label: t('forms'),
@@ -650,15 +949,32 @@ export default function CarePageClient({
         enabled: available?.consents !== false,
         badgeCount: positiveCount(summary?.pendingConsentCount),
       },
-      { view: 'documents', label: t('documents'), icon: <FileText size={17} />, enabled: available?.documents !== false },
-      { view: 'payments', label: t('payments'), icon: <CreditCard size={17} />, enabled: available?.payments === true },
+      {
+        view: 'documents',
+        label: t('documents'),
+        icon: <FileText size={17} />,
+        enabled: available?.documents !== false,
+      },
+      {
+        view: 'payments',
+        label: t('payments'),
+        icon: <CreditCard size={17} />,
+        enabled: available?.payments === true,
+      },
     ];
     return items.filter((item) => item.enabled);
   }, [bootstrap]);
 
   const navigate = useCallback(
-    (nextView: CareView, nextResourceId?: string, options?: CareNavigationOptions) => {
-      const nextAction = nextView === 'appointments' && nextResourceId ? options?.action : undefined;
+    (
+      nextView: CareView,
+      nextResourceId?: string,
+      options?: CareNavigationOptions,
+    ) => {
+      const nextAction =
+        nextView === 'appointments' && nextResourceId
+          ? options?.action
+          : undefined;
       setView(nextView);
       setResourceId(nextResourceId);
       setAction(nextAction);
@@ -687,7 +1003,11 @@ export default function CarePageClient({
   const careNav = useCareNavigationScroll(view, navigation);
 
   async function signOut() {
-    await fetch('/api/core/care/sessions', { method: 'DELETE', credentials: 'same-origin', cache: 'no-store' }).catch(() => undefined);
+    await fetch('/api/core/care/sessions', {
+      method: 'DELETE',
+      credentials: 'same-origin',
+      cache: 'no-store',
+    }).catch(() => undefined);
     router.replace('/');
   }
 
@@ -700,7 +1020,7 @@ export default function CarePageClient({
     return (
       <main className="shell care-shell">
         <section className="panel care-panel">
-          <ContentLoader />
+          <ContentLoader label={t('loadingCarePage')} />
         </section>
       </main>
     );
@@ -715,7 +1035,9 @@ export default function CarePageClient({
             <p>{t('contactClinic')}</p>
           </header>
           <div className="content">
-            <div className="notice danger">{error || t('careSessionRequired')}</div>
+            <div className="notice danger">
+              {error || t('careSessionRequired')}
+            </div>
           </div>
         </section>
       </main>
@@ -730,18 +1052,28 @@ export default function CarePageClient({
             <h1>{bootstrap.clinic?.name ?? t('yourClinic')}</h1>
             <p className="muted">{patientGreeting(bootstrap)}</p>
           </div>
-          <button type="button" className="secondary compact care-sign-out" onClick={signOut}>
+          <button
+            type="button"
+            className="secondary compact care-sign-out"
+            onClick={signOut}
+          >
             <LogOut size={14} aria-hidden="true" />
             {t('signOut')}
           </button>
         </header>
         <div className="care-nav-shell">
-          <nav className="care-nav" aria-label={t('carePageSections')} ref={careNav.containerRef}>
+          <nav
+            className="care-nav"
+            aria-label={t('carePageSections')}
+            ref={careNav.containerRef}
+          >
             {navigation.map((item) => (
               <Link
                 aria-current={item.view === view ? 'page' : undefined}
                 aria-label={navItemAriaLabel(item)}
-                className={item.view === view ? 'active secondary' : 'secondary'}
+                className={
+                  item.view === view ? 'active secondary' : 'secondary'
+                }
                 href={careNavHref(item.view)}
                 key={item.view}
                 onClick={(event) => {
@@ -761,8 +1093,20 @@ export default function CarePageClient({
               </Link>
             ))}
           </nav>
-          {careNav.canScrollLeft ? <span className="care-nav-fade care-nav-fade-left" data-testid="care-nav-left-fade" aria-hidden="true" /> : null}
-          {careNav.canScrollRight ? <span className="care-nav-fade care-nav-fade-right" data-testid="care-nav-right-fade" aria-hidden="true" /> : null}
+          {careNav.canScrollLeft ? (
+            <span
+              className="care-nav-fade care-nav-fade-left"
+              data-testid="care-nav-left-fade"
+              aria-hidden="true"
+            />
+          ) : null}
+          {careNav.canScrollRight ? (
+            <span
+              className="care-nav-fade care-nav-fade-right"
+              data-testid="care-nav-right-fade"
+              aria-hidden="true"
+            />
+          ) : null}
         </div>
         <div className="care-content">
           {view === 'overview' ? (
@@ -777,11 +1121,25 @@ export default function CarePageClient({
               onChanged={refreshCareData}
             />
           ) : view === 'forms' ? (
-            <FormsSection resourceId={resourceId} refreshKey={refreshKey} onNavigate={navigate} onChanged={refreshCareData} />
+            <FormsSection
+              resourceId={resourceId}
+              refreshKey={refreshKey}
+              onNavigate={navigate}
+              onChanged={refreshCareData}
+            />
           ) : view === 'consents' ? (
-            <ConsentsSection resourceId={resourceId} refreshKey={refreshKey} onNavigate={navigate} onChanged={refreshCareData} />
+            <ConsentsSection
+              resourceId={resourceId}
+              refreshKey={refreshKey}
+              onNavigate={navigate}
+              onChanged={refreshCareData}
+            />
           ) : view === 'documents' ? (
-            <DocumentsSection resourceId={resourceId} refreshKey={refreshKey} onNavigate={navigate} />
+            <DocumentsSection
+              resourceId={resourceId}
+              refreshKey={refreshKey}
+              onNavigate={navigate}
+            />
           ) : (
             <PaymentsSection />
           )}
@@ -796,7 +1154,11 @@ function Overview({
   onNavigate,
 }: {
   refreshKey: number;
-  onNavigate: (view: CareView, resourceId?: string, options?: CareNavigationOptions) => void;
+  onNavigate: (
+    view: CareView,
+    resourceId?: string,
+    options?: CareNavigationOptions,
+  ) => void;
 }) {
   const [overview, setOverview] = useState<CareOverviewDTO | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -816,10 +1178,12 @@ function Overview({
   }, [refreshKey]);
 
   if (error) return <InlineError message={error} />;
-  if (!overview) return <ContentLoader />;
+  if (!overview) return <ContentLoader label={t('loadingOverview')} />;
 
   const pendingTasks = overviewTasks(overview);
-  const recentDocuments = (overview.recentDocuments ?? []).filter((document) => document.id).slice(0, 3);
+  const recentDocuments = (overview.recentDocuments ?? [])
+    .filter((document) => document.id)
+    .slice(0, 3);
   return (
     <div className="care-section">
       {pendingTasks.length ? (
@@ -827,7 +1191,11 @@ function Overview({
           <h2>{t('thingsToComplete')}</h2>
           <div className="care-list">
             {pendingTasks.map((task) => (
-              <PendingTaskRow key={`${task.view}-${task.id}`} task={task} onOpen={() => onNavigate(task.view, task.id)} />
+              <PendingTaskRow
+                key={`${task.view}-${task.id}`}
+                task={task}
+                onOpen={() => onNavigate(task.view, task.id)}
+              />
             ))}
           </div>
         </section>
@@ -837,12 +1205,23 @@ function Overview({
         <section className="care-block">
           <div className="care-block-heading">
             <h2>{t('nextAppointment')}</h2>
-            <button type="button" className="care-section-link" onClick={() => onNavigate('appointments')}>
+            <button
+              type="button"
+              className="care-section-link"
+              onClick={() => onNavigate('appointments')}
+            >
               {t('seeAllAppointments')}
               <ArrowRight size={14} aria-hidden="true" />
             </button>
           </div>
-          <OverviewAppointmentCard appointment={overview.nextAppointment} onOpen={() => onNavigate('appointments', overview.nextAppointment?.id, { mode: 'push' })} />
+          <OverviewAppointmentCard
+            appointment={overview.nextAppointment}
+            onOpen={() =>
+              onNavigate('appointments', overview.nextAppointment?.id, {
+                mode: 'push',
+              })
+            }
+          />
         </section>
       ) : null}
 
@@ -850,11 +1229,18 @@ function Overview({
         <section className="care-block">
           <div className="care-block-heading">
             <h2>{t('recentDocuments')}</h2>
-            <button type="button" className="secondary compact" onClick={() => onNavigate('documents')}>
+            <button
+              type="button"
+              className="secondary compact"
+              onClick={() => onNavigate('documents')}
+            >
               {t('seeAllDocuments')}
             </button>
           </div>
-          <OverviewDocumentList documents={recentDocuments} onOpen={(id) => onNavigate('documents', id)} />
+          <OverviewDocumentList
+            documents={recentDocuments}
+            onOpen={(id) => onNavigate('documents', id)}
+          />
         </section>
       ) : null}
     </div>
@@ -873,17 +1259,29 @@ function AppointmentsSection({
   action?: CareAction;
   refreshKey: number;
   onBackToList: (useHistory: boolean) => void;
-  onNavigate: (view: CareView, resourceId?: string, options?: CareNavigationOptions) => void;
+  onNavigate: (
+    view: CareView,
+    resourceId?: string,
+    options?: CareNavigationOptions,
+  ) => void;
   onChanged: () => void;
 }) {
-  const [appointments, setAppointments] = useState<ManagedAppointmentResponseDTO[] | null>(null);
-  const [detail, setDetail] = useState<ManagedAppointmentResponseDTO | null>(null);
+  const [appointments, setAppointments] = useState<
+    ManagedAppointmentResponseDTO[] | null
+  >(null);
+  const [detail, setDetail] = useState<ManagedAppointmentResponseDTO | null>(
+    null,
+  );
   const [error, setError] = useState<string | null>(null);
   const [cancelBusy, setCancelBusy] = useState(false);
   const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false);
-  const [cancelDialogError, setCancelDialogError] = useState<string | null>(null);
+  const [cancelDialogError, setCancelDialogError] = useState<string | null>(
+    null,
+  );
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
-  const [invalidAppointmentIds, setInvalidAppointmentIds] = useState<Set<string>>(() => new Set());
+  const [invalidAppointmentIds, setInvalidAppointmentIds] = useState<
+    Set<string>
+  >(() => new Set());
   const narrowViewport = useNarrowCareViewport();
   const sectionRef = useRef<HTMLDivElement | null>(null);
   const backButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -893,24 +1291,39 @@ function AppointmentsSection({
   const openedFromListRef = useRef(false);
   const lastOpenedAppointmentIdRef = useRef<string | null>(null);
   const listScrollYRef = useRef<number | null>(null);
-  const groups = useMemo(() => groupAppointments(appointments ?? []), [appointments]);
+  const groups = useMemo(
+    () => groupAppointments(appointments ?? []),
+    [appointments],
+  );
   const hasAppointments = Boolean(appointments?.length);
   const isExplicitAppointmentSelection = Boolean(resourceId);
   const explicitAppointmentIsListValid = Boolean(
     resourceId &&
     !invalidAppointmentIds.has(resourceId) &&
-    (!appointments || appointments.some((appointment) => appointment.id === resourceId)),
+    (!appointments ||
+      appointments.some((appointment) => appointment.id === resourceId)),
   );
   const desktopDefaultAppointment = useMemo(
-    () => (narrowViewport === false ? getDefaultDesktopAppointment(groups, invalidAppointmentIds) : null),
+    () =>
+      narrowViewport === false
+        ? getDefaultDesktopAppointment(groups, invalidAppointmentIds)
+        : null,
     [groups, invalidAppointmentIds, narrowViewport],
   );
-  const selectedAppointmentId = explicitAppointmentIsListValid ? resourceId : desktopDefaultAppointment?.id;
-  const showMobileDetail = narrowViewport !== false && isExplicitAppointmentSelection;
-  const showMobileReschedule = narrowViewport !== false && isExplicitAppointmentSelection && action === 'reschedule';
-  const showMobileList = narrowViewport !== false && !isExplicitAppointmentSelection;
+  const selectedAppointmentId = explicitAppointmentIsListValid
+    ? resourceId
+    : desktopDefaultAppointment?.id;
+  const showMobileDetail =
+    narrowViewport !== false && isExplicitAppointmentSelection;
+  const showMobileReschedule =
+    narrowViewport !== false &&
+    isExplicitAppointmentSelection &&
+    action === 'reschedule';
+  const showMobileList =
+    narrowViewport !== false && !isExplicitAppointmentSelection;
   const showDesktopSplit = narrowViewport === false;
-  const showDesktopRescheduleDialog = showDesktopSplit && action === 'reschedule';
+  const showDesktopRescheduleDialog =
+    showDesktopSplit && action === 'reschedule';
 
   useEffect(() => {
     let active = true;
@@ -938,7 +1351,10 @@ function AppointmentsSection({
       return;
     }
 
-    const explicitSelectionMissing = Boolean(resourceId && !appointments.some((appointment) => appointment.id === resourceId));
+    const explicitSelectionMissing = Boolean(
+      resourceId &&
+      !appointments.some((appointment) => appointment.id === resourceId),
+    );
     if (explicitSelectionMissing) {
       setError(t('appointmentUnavailable'));
       onNavigate('appointments', undefined, { mode: 'replace' });
@@ -954,15 +1370,25 @@ function AppointmentsSection({
       setDetail(null);
       return;
     }
-    if (appointments && resourceId === selectedAppointmentId && !appointments.some((appointment) => appointment.id === selectedAppointmentId)) {
+    if (
+      appointments &&
+      resourceId === selectedAppointmentId &&
+      !appointments.some(
+        (appointment) => appointment.id === selectedAppointmentId,
+      )
+    ) {
       setDetail(null);
       setError(t('appointmentUnavailable'));
       return;
     }
     let active = true;
     setError(null);
-    setDetail((current) => (current?.id === selectedAppointmentId ? current : null));
-    corePublic<ManagedAppointmentResponseDTO>(`/care/appointments/${encodeURIComponent(selectedAppointmentId)}`)
+    setDetail((current) =>
+      current?.id === selectedAppointmentId ? current : null,
+    );
+    corePublic<ManagedAppointmentResponseDTO>(
+      `/care/appointments/${encodeURIComponent(selectedAppointmentId)}`,
+    )
       .then((item) => {
         if (active) setDetail(item);
       })
@@ -971,7 +1397,9 @@ function AppointmentsSection({
         setDetail(null);
         setError(t('appointmentUnavailable'));
         if (resourceId === selectedAppointmentId) {
-          setInvalidAppointmentIds((current) => new Set(current).add(selectedAppointmentId));
+          setInvalidAppointmentIds((current) =>
+            new Set(current).add(selectedAppointmentId),
+          );
           onNavigate('appointments', undefined, { mode: 'replace' });
         }
       });
@@ -991,7 +1419,13 @@ function AppointmentsSection({
   useEffect(() => {
     if (narrowViewport !== true) return;
     if (resourceId) {
-      sectionRef.current?.scrollIntoView?.({ block: 'start', behavior: careNavScrollBehavior(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true) });
+      sectionRef.current?.scrollIntoView?.({
+        block: 'start',
+        behavior: careNavScrollBehavior(
+          window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ===
+            true,
+        ),
+      });
       if (detail && action !== 'reschedule') {
         backButtonRef.current?.focus({ preventScroll: true });
       }
@@ -1031,13 +1465,20 @@ function AppointmentsSection({
     setError(null);
     setCancelDialogError(null);
     try {
-      const updated = await corePublic<ManagedAppointmentResponseDTO>(`/care/appointments/${encodeURIComponent(selectedAppointmentId)}/cancel`, { method: 'POST' });
+      const updated = await corePublic<ManagedAppointmentResponseDTO>(
+        `/care/appointments/${encodeURIComponent(selectedAppointmentId)}/cancel`,
+        { method: 'POST' },
+      );
       setDetail(updated);
       setCancelConfirmOpen(false);
       setSuccessMessage(t('cancelAppointmentSuccess'));
       onChanged();
     } catch (error) {
-      setCancelDialogError(isCancelNoLongerAllowedError(error) ? t('cancelNoLongerAllowed') : t('cancelAppointmentError'));
+      setCancelDialogError(
+        isCancelNoLongerAllowedError(error)
+          ? t('cancelNoLongerAllowed')
+          : t('cancelAppointmentError'),
+      );
     } finally {
       setCancelBusy(false);
     }
@@ -1055,7 +1496,10 @@ function AppointmentsSection({
   function openRescheduleFlow() {
     if (!selectedAppointmentId) return;
     setSuccessMessage(null);
-    onNavigate('appointments', selectedAppointmentId, { mode: 'push', action: 'reschedule' });
+    onNavigate('appointments', selectedAppointmentId, {
+      mode: 'push',
+      action: 'reschedule',
+    });
   }
 
   function closeRescheduleFlow(mode: CareNavigationMode = 'replace') {
@@ -1073,10 +1517,16 @@ function AppointmentsSection({
     if (!selectedAppointmentId || !slot.startAt) {
       throw new Error('invalid-slot');
     }
-    const updated = await corePublic<ManagedAppointmentResponseDTO>(`/care/appointments/${encodeURIComponent(selectedAppointmentId)}/reschedule`, {
-      method: 'POST',
-      body: JSON.stringify({ newStartAt: slot.startAt, employeeId: slot.employeeId }),
-    });
+    const updated = await corePublic<ManagedAppointmentResponseDTO>(
+      `/care/appointments/${encodeURIComponent(selectedAppointmentId)}/reschedule`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          newStartAt: slot.startAt,
+          employeeId: slot.employeeId,
+        }),
+      },
+    );
     setDetail(updated);
     setSuccessMessage(t('rescheduleAppointmentSuccess'));
     onChanged();
@@ -1096,7 +1546,8 @@ function AppointmentsSection({
     onBackToList(useHistory);
   }
 
-  if (!appointments) return <ContentLoader />;
+  if (!appointments)
+    return <ContentLoader label={t('loadingAppointmentList')} />;
   if (!hasAppointments) {
     return (
       <section className="care-block">
@@ -1109,7 +1560,9 @@ function AppointmentsSection({
   const appointmentList = (
     <section className="care-block care-appointment-list-panel">
       <h2>{t('appointments')}</h2>
-      {error && !isExplicitAppointmentSelection ? <InlineError message={error} /> : null}
+      {error && !isExplicitAppointmentSelection ? (
+        <InlineError message={error} />
+      ) : null}
       <AppointmentGroup
         title={t('upcomingAppointments')}
         appointments={groups.upcoming}
@@ -1154,7 +1607,9 @@ function AppointmentsSection({
           </button>
         </div>
       ) : null}
-      {selectedAppointmentId && !detail && !error ? <ContentLoader /> : null}
+      {selectedAppointmentId && !detail && !error ? (
+        <ContentLoader label={t('loadingAppointment')} />
+      ) : null}
       {detail ? (
         <div className="care-detail">
           <AppointmentFacts appointment={detail} />
@@ -1163,12 +1618,24 @@ function AppointmentsSection({
               <h3>{t('actions')}</h3>
               <div className="actions">
                 {detail.rescheduleAllowed ? (
-                  <button type="button" className="reschedule-action-button" disabled={cancelBusy} onClick={openRescheduleFlow} ref={rescheduleTriggerRef}>
+                  <button
+                    type="button"
+                    className="reschedule-action-button"
+                    disabled={cancelBusy}
+                    onClick={openRescheduleFlow}
+                    ref={rescheduleTriggerRef}
+                  >
                     {t('rescheduleAppointment')}
                   </button>
                 ) : null}
                 {detail.cancellationAllowed ? (
-                  <button type="button" className="secondary danger-action" disabled={cancelBusy} onClick={requestCancelAppointment} ref={cancelTriggerRef}>
+                  <button
+                    type="button"
+                    className="secondary danger-action"
+                    disabled={cancelBusy}
+                    onClick={requestCancelAppointment}
+                    ref={cancelTriggerRef}
+                  >
                     {t('cancelAppointment')}
                   </button>
                 ) : null}
@@ -1177,7 +1644,9 @@ function AppointmentsSection({
           ) : null}
         </div>
       ) : null}
-      {!selectedAppointmentId && !error ? <NeutralEmptyState>{t('chooseAppointment')}</NeutralEmptyState> : null}
+      {!selectedAppointmentId && !error ? (
+        <NeutralEmptyState>{t('chooseAppointment')}</NeutralEmptyState>
+      ) : null}
     </section>
   );
 
@@ -1222,86 +1691,308 @@ function FormsSection({
 }: {
   resourceId?: string;
   refreshKey: number;
-  onNavigate: (view: CareView, resourceId?: string) => void;
+  onNavigate: (
+    view: CareView,
+    resourceId?: string,
+    options?: CareNavigationOptions,
+  ) => void;
   onChanged: () => void;
 }) {
-  const [forms, setForms] = useState<CareFormSummaryDTO[] | null>(null);
+  const [forms, setForms] = useState<CareFormListItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const invalidFormIdsRef = useRef(new Set<string>());
 
   useEffect(() => {
     let active = true;
     setError(null);
     corePublic<ItemsResponse<CareFormSummaryDTO>>('/care/forms')
       .then((response) => {
-        if (active) setForms(itemsResponse(response));
+        if (active) setForms(itemsResponse(response) as CareFormListItem[]);
       })
       .catch((loadError) => {
-        if (active) setError(loadError instanceof Error ? loadError.message : 'Unable to load forms.');
+        if (active)
+          setError(
+            loadError instanceof Error
+              ? loadError.message
+              : 'Unable to load forms.',
+          );
       });
     return () => {
       active = false;
     };
   }, [refreshKey]);
 
+  useEffect(() => {
+    if (!forms || !resourceId) return;
+    const selected = forms.find((item) => item.id === resourceId);
+    if (!selected || getPatientFormState(selected).group === 'hidden') {
+      invalidFormIdsRef.current.add(resourceId);
+      setNotice(t('formNoLongerAvailable'));
+      onNavigate('forms', undefined, { mode: 'replace' });
+    }
+  }, [forms, onNavigate, resourceId]);
+
+  function openForm(id: string) {
+    setNotice(null);
+    onNavigate('forms', id, { mode: 'push' });
+  }
+
+  function backToForms() {
+    onNavigate('forms', undefined, { mode: 'replace' });
+  }
+
+  function handleUnavailable() {
+    if (resourceId) invalidFormIdsRef.current.add(resourceId);
+    setNotice(t('formNoLongerAvailable'));
+    onChanged();
+    onNavigate('forms', undefined, { mode: 'replace' });
+  }
+
+  function handleSubmitted() {
+    setNotice(t('formSubmittedSuccess'));
+    onChanged();
+    onNavigate('forms', undefined, { mode: 'replace' });
+  }
+
+  function handleSaved() {
+    onChanged();
+  }
+
   if (error) return <InlineError message={error} />;
-  if (!forms) return <ContentLoader />;
-  const pending = forms.filter((item) => pendingFormStatuses.has(item.status ?? ''));
-  const completed = forms.filter((item) => !pendingFormStatuses.has(item.status ?? ''));
+  if (resourceId) {
+    if (!forms) {
+      return (
+        <section className="care-block care-form-completion-shell">
+          <ContentLoader label={t('loadingForm')} />
+        </section>
+      );
+    }
+    if (invalidFormIdsRef.current.has(resourceId)) {
+      return (
+        <section className="care-block">
+          <h2>{t('forms')}</h2>
+          <NeutralEmptyState>{t('formNoLongerAvailable')}</NeutralEmptyState>
+        </section>
+      );
+    }
+    const summary = forms.find((item) => item.id === resourceId);
+    if (!summary || getPatientFormState(summary).group === 'hidden') {
+      return (
+        <section className="care-block care-form-completion-shell">
+          <ContentLoader label={t('loadingForm')} />
+        </section>
+      );
+    }
+    return (
+      <CareFormCompletionView
+        assignmentId={resourceId}
+        summary={summary}
+        onBack={backToForms}
+        onSaved={handleSaved}
+        onSubmitted={handleSubmitted}
+        onUnavailable={handleUnavailable}
+      />
+    );
+  }
+
+  if (!forms) return <ContentLoader label={t('loadingFormList')} />;
+  const groups = groupPatientForms(forms);
+  const hasVisibleForms =
+    groups.toComplete.length ||
+    groups.inProgress.length ||
+    groups.completed.length ||
+    groups.unavailable.length;
 
   return (
-    <div className="care-two-column">
-      <section className="care-block">
-        <h2>Forms</h2>
-        <GroupedTasks title="To complete" items={pending} activeId={resourceId} onOpen={(id) => onNavigate('forms', id)} />
-        <GroupedTasks title="Completed or unavailable" items={completed} activeId={resourceId} onOpen={(id) => onNavigate('forms', id)} />
-      </section>
-      <section className="care-block">
-        <h2>Form details</h2>
-        {resourceId ? <FormFlow assignmentId={resourceId} onChanged={onChanged} /> : <EmptyState>Select a form to complete it.</EmptyState>}
-      </section>
-    </div>
+    <section className="care-block care-forms-landing">
+      <h2>{t('forms')}</h2>
+      {notice ? (
+        <div className="notice success care-dismissible-notice" role="status">
+          <span>{notice}</span>
+          <button
+            type="button"
+            aria-label={t('dismissFormMessage')}
+            className="care-notice-close"
+            onClick={() => setNotice(null)}
+          >
+            <X size={16} aria-hidden="true" />
+          </button>
+        </div>
+      ) : null}
+      {hasVisibleForms ? (
+        <>
+          <CareFormsGroup
+            title={t('toComplete')}
+            items={groups.toComplete}
+            onOpen={openForm}
+          />
+          <CareFormsGroup
+            title={t('inProgress')}
+            items={groups.inProgress}
+            onOpen={openForm}
+          />
+          <CareFormsGroup
+            title={t('completed')}
+            items={groups.completed}
+            onOpen={openForm}
+          />
+          <CareFormsGroup
+            title=""
+            items={groups.unavailable}
+            onOpen={openForm}
+          />
+        </>
+      ) : (
+        <NeutralEmptyState>{t('noForms')}</NeutralEmptyState>
+      )}
+    </section>
   );
 }
 
-function FormFlow({ assignmentId, onChanged }: { assignmentId: string; onChanged: () => void }) {
-  const [form, setForm] = useState<PublicFormDTO | null>(null);
+function CareFormCompletionView({
+  assignmentId,
+  summary,
+  onBack,
+  onSaved,
+  onSubmitted,
+  onUnavailable,
+}: {
+  assignmentId: string;
+  summary: CareFormListItem;
+  onBack: () => void;
+  onSaved: () => void;
+  onSubmitted: () => void;
+  onUnavailable: () => void;
+}) {
+  return (
+    <section className="care-block care-form-completion-shell">
+      <button
+        type="button"
+        aria-label={t('backToForms')}
+        className="care-form-back"
+        onClick={onBack}
+      >
+        <ArrowLeft size={16} aria-hidden="true" />
+        {t('forms')}
+      </button>
+      <FormFlow
+        assignmentId={assignmentId}
+        fallbackTitle={formDisplayTitle(summary)}
+        initialPatientState={getPatientFormState(summary)}
+        onSaved={onSaved}
+        onSubmitted={onSubmitted}
+        onUnavailable={onUnavailable}
+      />
+    </section>
+  );
+}
+
+function FormFlow({
+  assignmentId,
+  fallbackTitle,
+  initialPatientState,
+  onSaved,
+  onSubmitted,
+  onUnavailable,
+}: {
+  assignmentId: string;
+  fallbackTitle?: string;
+  initialPatientState?: PatientFormState;
+  onSaved: () => void;
+  onSubmitted: () => void;
+  onUnavailable: () => void;
+}) {
+  const [form, setForm] = useState<PublicFormWithAnswers | null>(null);
   const [answers, setAnswers] = useState<Answers>({});
   const [sectionIndex, setSectionIndex] = useState(0);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [message, setMessage] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitDialogOpen, setSubmitDialogOpen] = useState(false);
+  const [pendingFocusFieldId, setPendingFocusFieldId] = useState<string | null>(
+    null,
+  );
+  const onUnavailableRef = useRef(onUnavailable);
+
+  useEffect(() => {
+    onUnavailableRef.current = onUnavailable;
+  }, [onUnavailable]);
 
   useEffect(() => {
     let active = true;
     setForm(null);
     setMessage(null);
     setActionError(null);
-    corePublic<PublicFormDTO>(`/care/forms/${encodeURIComponent(assignmentId)}`)
+    corePublic<PublicFormWithAnswers>(
+      `/care/forms/${encodeURIComponent(assignmentId)}`,
+    )
       .then((data) => {
         if (!active) return;
         setForm(data);
-        setAnswers((data.draft as Answers | undefined) ?? {});
+        setAnswers(initialFormAnswers(data));
         setSectionIndex(0);
       })
       .catch(() => {
-        if (active) setMessage('That form is not available in this Care Page.');
+        if (active) onUnavailableRef.current();
       });
     return () => {
       active = false;
     };
   }, [assignmentId]);
 
-  if (message) return <InlineError message={message} />;
-  if (!form) return <ContentLoader />;
+  useEffect(() => {
+    if (!pendingFocusFieldId) return;
+    const escapedFieldId = cssEscape(pendingFocusFieldId);
+    const target = document.querySelector<HTMLElement>(
+      `[data-field-id="${escapedFieldId}"] input:not([type="hidden"]), [data-field-id="${escapedFieldId}"] textarea, [data-field-id="${escapedFieldId}"] select`,
+    );
+    if (!target) return;
+    target.focus({ preventScroll: true });
+    target.scrollIntoView?.({
+      block: 'center',
+      behavior: careNavScrollBehavior(
+        window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ===
+          true,
+      ),
+    });
+    setPendingFocusFieldId(null);
+  }, [pendingFocusFieldId, sectionIndex, errors]);
+
+  if (message && !form) return <InlineError message={message} />;
+  if (!form) return <ContentLoader label={t('loadingForm')} />;
   const schema = form.schema as ClinicalSchema | undefined;
-  if (!form.open || !schema) return <EmptyState>{completedText(form.closedReason, 'This form is not currently open.')}</EmptyState>;
+  const patientState = getPatientFormState({
+    status: form.status,
+    closedReason: form.closedReason,
+  } as CareFormListItem);
+  const readOnly =
+    patientState.group === 'completed' ||
+    initialPatientState?.group === 'completed';
+  if (!schema)
+    return <NeutralEmptyState>{t('formNoLongerAvailable')}</NeutralEmptyState>;
+  if (!form.open && !readOnly)
+    return (
+      <NeutralEmptyState>
+        {completedText(form.closedReason, t('formNoLongerAvailable'))}
+      </NeutralEmptyState>
+    );
 
   const sections = schema.sections ?? [];
   const section = sections[sectionIndex];
+  const displayedSections = readOnly ? sections : section ? [section] : [];
   const isLast = sectionIndex >= sections.length - 1;
+  const busy = saving || submitting;
+  const title = formDisplayTitle(
+    form as CareFormTitleSource,
+    fallbackTitle ?? t('form'),
+  );
+  const canSaveDraft = !readOnly;
 
   function updateAnswer(fieldId: string, value: unknown) {
+    if (readOnly) return;
     setAnswers((current) => ({ ...current, [fieldId]: value }));
     setErrors((current) => {
       const next = { ...current };
@@ -1313,91 +2004,518 @@ function FormFlow({ assignmentId, onChanged }: { assignmentId: string; onChanged
   function next() {
     const validation = validateRequired(schema!, answers, section?.id);
     setErrors(validation);
-    if (Object.keys(validation).length === 0) setSectionIndex((current) => Math.min(current + 1, sections.length - 1));
+    const firstError = firstInvalidField(schema!, validation);
+    if (firstError) {
+      setPendingFocusFieldId(firstError.fieldId);
+      return;
+    }
+    setSectionIndex((current) => Math.min(current + 1, sections.length - 1));
   }
 
   async function saveDraft() {
-    setBusy(true);
+    if (saving || readOnly) return;
+    setSaving(true);
     setActionError(null);
+    setMessage(null);
     try {
       await corePublic(`/care/forms/${encodeURIComponent(assignmentId)}`, {
         method: 'PATCH',
         body: JSON.stringify({ answers }),
       });
-      setMessage('Progress saved.');
-    } catch (saveError) {
-      setActionError(saveError instanceof Error ? saveError.message : 'Unable to save progress.');
+      setMessage(t('formProgressSaved'));
+      onSaved();
+    } catch {
+      setActionError(t('formSaveError'));
     } finally {
-      setBusy(false);
+      setSaving(false);
     }
   }
 
-  async function submit() {
+  function requestSubmit() {
     const validation = validateRequired(schema!, answers);
     setErrors(validation);
-    if (Object.keys(validation).length > 0) return;
-    setBusy(true);
+    const firstError = firstInvalidField(schema!, validation);
+    if (firstError) {
+      setSectionIndex(firstError.sectionIndex);
+      setPendingFocusFieldId(firstError.fieldId);
+      return;
+    }
+    setActionError(null);
+    setSubmitDialogOpen(true);
+  }
+
+  async function submit() {
+    if (submitting || readOnly) return;
+    setSubmitting(true);
     setActionError(null);
     try {
-      await corePublic(`/care/forms/${encodeURIComponent(assignmentId)}/submit`, {
-        method: 'POST',
-        body: JSON.stringify({ answers, submittedByType: 'PATIENT' }),
-      });
-      setMessage('Your form has been submitted.');
-      onChanged();
-    } catch (submitError) {
-      setActionError(submitError instanceof Error ? submitError.message : 'Unable to submit the form.');
+      await corePublic(
+        `/care/forms/${encodeURIComponent(assignmentId)}/submit`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ answers, submittedByType: 'PATIENT' }),
+        },
+      );
+      setSubmitDialogOpen(false);
+      onSubmitted();
+    } catch {
+      setActionError(t('formSubmitError'));
     } finally {
-      setBusy(false);
+      setSubmitting(false);
     }
   }
 
   return (
     <div className="care-form-flow">
-      {message ? <div className="notice success">{message}</div> : null}
+      {message ? (
+        <div className="notice success care-dismissible-notice" role="status">
+          <span>{message}</span>
+          <button
+            type="button"
+            aria-label={t('dismissFormMessage')}
+            className="care-notice-close"
+            onClick={() => setMessage(null)}
+          >
+            <X size={16} aria-hidden="true" />
+          </button>
+        </div>
+      ) : null}
       {actionError ? <InlineError message={actionError} /> : null}
-      <div>
-        <h3>{form.title ?? 'Form'}</h3>
+      <div className="care-form-title">
+        <h2>{title}</h2>
         {form.description ? <p className="muted">{form.description}</p> : null}
+        {!readOnly && sections.length > 1 ? (
+          <p className="care-form-progress">
+            {t('formSectionsProgress', {
+              current: sectionIndex + 1,
+              total: sections.length,
+            })}
+          </p>
+        ) : null}
       </div>
-      {section ? (
-        <section className="document-section">
-          <div>
-            <p className="eyebrow">Section {sectionIndex + 1}</p>
-            <h3>{text(section.label) || 'Section'}</h3>
+      {displayedSections.map((displayedSection) => (
+        <section key={displayedSection.id} className="document-section">
+          <div className="document-section-heading">
+            {sectionTitle(displayedSection) ? (
+              <h3>{sectionTitle(displayedSection)}</h3>
+            ) : null}
+            {displayedSection.description ? (
+              <span className="document-section-description">
+                {formTemplateText(displayedSection.description)}
+              </span>
+            ) : null}
           </div>
           <div className="document-fields">
-            {section.fields.map((field) => (
-              <FieldInput key={field.id} field={field} value={answers[field.id]} error={errors[field.id]} onChange={(value) => updateAnswer(field.id, value)} />
+            {displayedSection.fields.map((node) => (
+              <CareFormSchemaNode
+                key={node.id}
+                node={node}
+                answers={answers}
+                errors={errors}
+                readOnly={readOnly}
+                onChange={updateAnswer}
+              />
             ))}
           </div>
         </section>
-      ) : null}
-      <div className="document-actions">
-        <div className="actions">
-          <button type="button" className="secondary" disabled={sectionIndex === 0 || busy} onClick={() => setSectionIndex((current) => Math.max(0, current - 1))}>
-            <ArrowLeft size={16} />
-            Back
-          </button>
-          {!isLast ? (
-            <button type="button" disabled={busy} onClick={next}>
-              Next
-              <ArrowRight size={16} />
-            </button>
-          ) : (
-            <button type="button" disabled={busy} onClick={submit}>
-              <Send size={16} />
-              Submit form
-            </button>
-          )}
+      ))}
+      {!readOnly ? (
+        <div className="document-actions care-form-action-footer">
+          <div className="actions">
+            {canSaveDraft ? (
+              <button
+                type="button"
+                className="secondary"
+                disabled={busy}
+                aria-busy={saving}
+                onClick={saveDraft}
+              >
+                {saving ? (
+                  <span className="inline-loading">
+                    <span
+                      className="loader-dot inline-loading-icon"
+                      aria-hidden="true"
+                    />
+                    {t('formSaving')}
+                  </span>
+                ) : (
+                  <>
+                    <Save size={16} aria-hidden="true" />
+                    {t('saveProgress')}
+                  </>
+                )}
+              </button>
+            ) : null}
+            {sectionIndex > 0 ? (
+              <button
+                type="button"
+                className="secondary"
+                disabled={busy}
+                onClick={() =>
+                  setSectionIndex((current) => Math.max(0, current - 1))
+                }
+              >
+                <ArrowLeft size={16} aria-hidden="true" />
+                {t('previousSection')}
+              </button>
+            ) : null}
+            {!isLast ? (
+              <button type="button" disabled={busy} onClick={next}>
+                {t('continue')}
+                <ArrowRight size={16} aria-hidden="true" />
+              </button>
+            ) : (
+              <button type="button" disabled={busy} onClick={requestSubmit}>
+                <Send size={16} aria-hidden="true" />
+                {t('submitForm')}
+              </button>
+            )}
+          </div>
         </div>
-        <button type="button" className="secondary" disabled={busy} onClick={saveDraft}>
-          <Save size={16} />
-          Save progress
-        </button>
+      ) : (
+        <div className="notice success">{t('completed')}</div>
+      )}
+      {submitDialogOpen ? (
+        <CareFormSubmitDialog
+          busy={submitting}
+          error={actionError}
+          formTitle={title}
+          onClose={() => {
+            if (!submitting) setSubmitDialogOpen(false);
+          }}
+          onConfirm={submit}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function CareFormsGroup({
+  title,
+  items,
+  onOpen,
+}: {
+  title: string;
+  items: CareFormListItem[];
+  onOpen: (id: string) => void;
+}) {
+  if (!items.length) return null;
+  return (
+    <div className="care-task-group care-form-group">
+      {title ? <h3>{title}</h3> : null}
+      <div className="care-list">
+        {items.map((item) => (
+          <CareFormCard key={item.id} form={item} onOpen={onOpen} />
+        ))}
       </div>
     </div>
   );
+}
+
+function CareFormCard({
+  form,
+  onOpen,
+}: {
+  form: CareFormListItem;
+  onOpen: (id: string) => void;
+}) {
+  const patientState = getPatientFormState(form);
+  if (patientState.group === 'hidden' || !form.id) return null;
+  const title = formDisplayTitle(form, t('form'));
+  const completedAt =
+    patientState.group === 'completed' ? patientState.completedAt : undefined;
+  const statusLabel = completedAt
+    ? t('completedOn', { date: formatClinicDate(completedAt) })
+    : t(patientState.labelKey);
+  const context = taskContext(
+    form.appointmentId,
+    undefined,
+    patientState.group === 'completed' ? undefined : form.dueAt,
+  );
+  const disabled = !patientState.actionable;
+
+  return (
+    <button
+      type="button"
+      className={
+        disabled
+          ? 'care-list-item care-form-card disabled'
+          : 'care-list-item care-form-card'
+      }
+      disabled={disabled}
+      onClick={() => form.id && patientState.actionable && onOpen(form.id)}
+    >
+      <span>
+        <strong>{title}</strong>
+        {context ? <small>{context}</small> : null}
+        <small
+          className={
+            patientState.group === 'completed' ? 'care-list-status' : undefined
+          }
+        >
+          {statusLabel}
+        </small>
+      </span>
+      {patientState.actionable ? (
+        <ArrowRight size={16} aria-hidden="true" />
+      ) : null}
+    </button>
+  );
+}
+
+function CareFormSubmitDialog({
+  busy,
+  error,
+  formTitle,
+  onClose,
+  onConfirm,
+}: {
+  busy: boolean;
+  error: string | null;
+  formTitle: string;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const previous =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+    requestAnimationFrame(() => {
+      const focusTarget = dialogRef.current?.querySelector<HTMLElement>(
+        'button:not([disabled])',
+      );
+      focusTarget?.focus({ preventScroll: true });
+    });
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        if (!busy) onClose();
+        return;
+      }
+      const dialog = dialogRef.current;
+      if (event.key !== 'Tab' || !dialog) return;
+      const focusable = Array.from(
+        dialog.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        ),
+      );
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+      previous?.focus({ preventScroll: true });
+    };
+  }, [busy, onClose]);
+
+  return (
+    <div
+      className="care-dialog-overlay care-submit-dialog-overlay"
+      onMouseDown={() => !busy && onClose()}
+    >
+      <div
+        aria-labelledby="care-submit-dialog-title"
+        aria-describedby="care-submit-dialog-description"
+        aria-modal="true"
+        className="care-dialog care-confirm-dialog"
+        onMouseDown={(event) => event.stopPropagation()}
+        ref={dialogRef}
+        role="dialog"
+      >
+        <section
+          className="care-confirm-content"
+          aria-labelledby="care-submit-dialog-title"
+        >
+          <header className="care-confirm-header">
+            <h2 id="care-submit-dialog-title">{t('formSubmitTitle')}</h2>
+            <p className="muted">{formTitle}</p>
+          </header>
+          <div
+            className="care-confirm-description"
+            id="care-submit-dialog-description"
+          >
+            <p className="muted">{t('formSubmitReviewDescription')}</p>
+          </div>
+          {error ? <InlineError message={error} /> : null}
+          <div className="actions care-confirm-actions">
+            <button
+              type="button"
+              className="secondary"
+              disabled={busy}
+              onClick={onClose}
+            >
+              {t('reviewForm')}
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              aria-busy={busy}
+              onClick={onConfirm}
+            >
+              {t('submitForm')}
+            </button>
+          </div>
+        </section>
+      </div>
+    </div>
+  );
+}
+
+function groupPatientForms(forms: CareFormListItem[]) {
+  return forms.reduce(
+    (groups, form) => {
+      const state = getPatientFormState(form);
+      if (state.group === 'toComplete') groups.toComplete.push(form);
+      if (state.group === 'inProgress') groups.inProgress.push(form);
+      if (state.group === 'completed') groups.completed.push(form);
+      if (
+        state.group === 'expired' ||
+        state.group === 'withdrawn' ||
+        state.group === 'noLongerAvailable'
+      )
+        groups.unavailable.push(form);
+      return groups;
+    },
+    {
+      toComplete: [],
+      inProgress: [],
+      completed: [],
+      unavailable: [],
+    } as Record<
+      'toComplete' | 'inProgress' | 'completed' | 'unavailable',
+      CareFormListItem[]
+    >,
+  );
+}
+
+function getPatientFormState(form: CareFormListItem): PatientFormState {
+  const status = (form.status ?? '').toUpperCase();
+  if (formToCompleteStatuses.has(status))
+    return { group: 'toComplete', labelKey: 'completeForm', actionable: true };
+  if (formInProgressStatuses.has(status))
+    return { group: 'inProgress', labelKey: 'continueForm', actionable: true };
+  if (formCompletedStatuses.has(status)) {
+    return {
+      group: 'completed',
+      labelKey: 'viewCompletedForm',
+      actionable: true,
+      completedAt:
+        form.completedAt ?? form.submittedAt ?? form.responseSubmittedAt,
+    };
+  }
+  if (formExpiredStatuses.has(status))
+    return { group: 'expired', labelKey: 'expired', actionable: false };
+  if (formWithdrawnStatuses.has(status))
+    return {
+      group: 'withdrawn',
+      labelKey: 'withdrawnByClinic',
+      actionable: false,
+    };
+  if (formNoLongerAvailableStatuses.has(status))
+    return {
+      group: 'noLongerAvailable',
+      labelKey: 'noLongerAvailable',
+      actionable: false,
+    };
+  return { group: 'hidden', labelKey: 'noLongerAvailable', actionable: false };
+}
+
+function formDisplayTitle(form: CareFormTitleSource, fallback = '') {
+  return (
+    form.title?.trim() ||
+    form.name?.trim() ||
+    form.formName?.trim() ||
+    form.templateTitle?.trim() ||
+    form.templateName?.trim() ||
+    fallback
+  );
+}
+
+function initialFormAnswers(form: PublicFormWithAnswers) {
+  return form.submission?.answers ?? (form.draft as Answers | undefined) ?? {};
+}
+
+function firstInvalidField(schema: ClinicalSchema, validation: FieldErrors) {
+  for (
+    let sectionIndex = 0;
+    sectionIndex < schema.sections.length;
+    sectionIndex += 1
+  ) {
+    const field = fieldsInNodes(schema.sections[sectionIndex].fields).find(
+      (item) => validation[item.id],
+    );
+    if (field) return { sectionIndex, fieldId: field.id };
+  }
+  return null;
+}
+
+function formTemplateText(value: LocalizedText) {
+  if (!value) return '';
+  if (typeof value === 'string') return value;
+  const locale = careLocale();
+  return (
+    value[locale] ||
+    value.en ||
+    value.fr ||
+    Object.values(value).find(Boolean) ||
+    ''
+  );
+}
+
+function sectionTitle(section: Section) {
+  return formTemplateText(section.label) || formTemplateText(section.title);
+}
+
+function isColumnsNode(node: SchemaNode | undefined): node is ColumnsNode {
+  return node?.type === 'COLUMNS';
+}
+
+function fieldsInNodes(nodes: SchemaNode[] = []) {
+  return nodes.flatMap((node) =>
+    isColumnsNode(node) ? (node.children ?? []) : [node],
+  );
+}
+
+function normalizedColumnRatios(
+  ratios: number[] | undefined,
+  childCount: number,
+) {
+  if (!childCount) return [];
+  if (
+    ratios?.length === childCount &&
+    ratios.every((ratio) => Number.isFinite(ratio) && ratio > 0)
+  ) {
+    return ratios;
+  }
+  return Array.from({ length: childCount }, () => 1);
+}
+
+function inputTypeForField(type: string) {
+  if (type === 'DATE') return 'date';
+  if (type === 'NUMBER' || type === 'PAIN_SCALE') return 'number';
+  if (type === 'EMAIL') return 'email';
+  if (type === 'PHONE') return 'tel';
+  return 'text';
+}
+
+function cssEscape(value: string) {
+  return typeof CSS !== 'undefined' && typeof CSS.escape === 'function'
+    ? CSS.escape(value)
+    : value.replace(/["\\]/g, '\\$&');
 }
 
 function ConsentsSection({
@@ -1411,7 +2529,9 @@ function ConsentsSection({
   onNavigate: (view: CareView, resourceId?: string) => void;
   onChanged: () => void;
 }) {
-  const [consents, setConsents] = useState<CareConsentSummaryDTO[] | null>(null);
+  const [consents, setConsents] = useState<CareConsentSummaryDTO[] | null>(
+    null,
+  );
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -1422,7 +2542,12 @@ function ConsentsSection({
         if (active) setConsents(itemsResponse(response));
       })
       .catch((loadError) => {
-        if (active) setError(loadError instanceof Error ? loadError.message : 'Unable to load consents.');
+        if (active)
+          setError(
+            loadError instanceof Error
+              ? loadError.message
+              : 'Unable to load consents.',
+          );
       });
     return () => {
       active = false;
@@ -1430,32 +2555,59 @@ function ConsentsSection({
   }, [refreshKey]);
 
   if (error) return <InlineError message={error} />;
-  if (!consents) return <ContentLoader />;
-  const pending = consents.filter((item) => pendingConsentStatuses.has(item.status ?? ''));
-  const completed = consents.filter((item) => !pendingConsentStatuses.has(item.status ?? ''));
+  if (!consents) return <ContentLoader label={t('loadingConsentList')} />;
+  const pending = consents.filter((item) =>
+    pendingConsentStatuses.has(item.status ?? ''),
+  );
+  const completed = consents.filter(
+    (item) => !pendingConsentStatuses.has(item.status ?? ''),
+  );
 
   return (
     <div className="care-two-column">
       <section className="care-block">
         <h2>Consents</h2>
-        <GroupedTasks title="Needs signature" items={pending} activeId={resourceId} onOpen={(id) => onNavigate('consents', id)} />
-        <GroupedTasks title="Signed or unavailable" items={completed} activeId={resourceId} onOpen={(id) => onNavigate('consents', id)} />
+        <GroupedTasks
+          title="Needs signature"
+          items={pending}
+          activeId={resourceId}
+          onOpen={(id) => onNavigate('consents', id)}
+        />
+        <GroupedTasks
+          title="Signed or unavailable"
+          items={completed}
+          activeId={resourceId}
+          onOpen={(id) => onNavigate('consents', id)}
+        />
       </section>
       <section className="care-block">
         <h2>Consent details</h2>
-        {resourceId ? <ConsentFlow assignmentId={resourceId} onChanged={onChanged} /> : <EmptyState>Select a consent to review it.</EmptyState>}
+        {resourceId ? (
+          <ConsentFlow assignmentId={resourceId} onChanged={onChanged} />
+        ) : (
+          <EmptyState>Select a consent to review it.</EmptyState>
+        )}
       </section>
     </div>
   );
 }
 
-function ConsentFlow({ assignmentId, onChanged }: { assignmentId: string; onChanged: () => void }) {
+function ConsentFlow({
+  assignmentId,
+  onChanged,
+}: {
+  assignmentId: string;
+  onChanged: () => void;
+}) {
   const [consent, setConsent] = useState<PublicConsentDTO | null>(null);
   const [signerName, setSignerName] = useState('');
-  const [signerType, setSignerType] = useState<PublicConsentSignRequestDTOSignerTypeEnum>('PATIENT');
+  const [signerType, setSignerType] =
+    useState<PublicConsentSignRequestDTOSignerTypeEnum>('PATIENT');
   const [relationship, setRelationship] = useState('');
   const [typedSignature, setTypedSignature] = useState('');
-  const [acknowledgements, setAcknowledgements] = useState<Record<string, boolean>>({});
+  const [acknowledgements, setAcknowledgements] = useState<
+    Record<string, boolean>
+  >({});
   const [finalConfirmation, setFinalConfirmation] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [complete, setComplete] = useState(false);
@@ -1466,12 +2618,15 @@ function ConsentFlow({ assignmentId, onChanged }: { assignmentId: string; onChan
     setConsent(null);
     setError(null);
     setComplete(false);
-    corePublic<PublicConsentDTO>(`/care/consents/${encodeURIComponent(assignmentId)}`)
+    corePublic<PublicConsentDTO>(
+      `/care/consents/${encodeURIComponent(assignmentId)}`,
+    )
       .then((data) => {
         if (active) setConsent(data);
       })
       .catch(() => {
-        if (active) setError('That consent is not available in this Care Page.');
+        if (active)
+          setError('That consent is not available in this Care Page.');
       });
     return () => {
       active = false;
@@ -1479,39 +2634,62 @@ function ConsentFlow({ assignmentId, onChanged }: { assignmentId: string; onChan
   }, [assignmentId]);
 
   if (error) return <InlineError message={error} />;
-  if (!consent) return <ContentLoader />;
-  if (complete) return <div className="notice success">Your consent has been signed.</div>;
-  if (!consent.open) return <EmptyState>{completedText(consent.closedReason, 'This consent is not currently open.')}</EmptyState>;
+  if (!consent) return <ContentLoader label={t('loadingConsent')} />;
+  if (complete)
+    return <div className="notice success">Your consent has been signed.</div>;
+  if (!consent.open)
+    return (
+      <EmptyState>
+        {completedText(
+          consent.closedReason,
+          'This consent is not currently open.',
+        )}
+      </EmptyState>
+    );
 
-  const required = (consent.requiredAcknowledgements as Array<{ id?: string; label?: string }> | undefined) ?? [];
+  const required =
+    (consent.requiredAcknowledgements as
+      Array<{ id?: string; label?: string }> | undefined) ?? [];
 
   async function sign() {
     if (!signerName.trim() || !typedSignature.trim() || !finalConfirmation) {
       setError('Please complete the signing details.');
       return;
     }
-    if (required.some((ack, index) => acknowledgements[ack.id ?? `ack-${index}`] !== true)) {
+    if (
+      required.some(
+        (ack, index) => acknowledgements[ack.id ?? `ack-${index}`] !== true,
+      )
+    ) {
       setError('Please complete the required acknowledgements.');
       return;
     }
     setBusy(true);
     setError(null);
     try {
-      await corePublic(`/care/consents/${encodeURIComponent(assignmentId)}/sign`, {
-        method: 'POST',
-        body: JSON.stringify({
-          signerType,
-          signerName,
-          relationshipToPatient: signerType === 'PATIENT' ? undefined : relationship,
-          acknowledgements,
-          typedSignature,
-          finalConfirmation,
-        }),
-      });
+      await corePublic(
+        `/care/consents/${encodeURIComponent(assignmentId)}/sign`,
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            signerType,
+            signerName,
+            relationshipToPatient:
+              signerType === 'PATIENT' ? undefined : relationship,
+            acknowledgements,
+            typedSignature,
+            finalConfirmation,
+          }),
+        },
+      );
       setComplete(true);
       onChanged();
     } catch (signError) {
-      setError(signError instanceof Error ? signError.message : 'Unable to sign this consent.');
+      setError(
+        signError instanceof Error
+          ? signError.message
+          : 'Unable to sign this consent.',
+      );
     } finally {
       setBusy(false);
     }
@@ -1521,7 +2699,9 @@ function ConsentFlow({ assignmentId, onChanged }: { assignmentId: string; onChan
     <div className="care-form-flow">
       <div>
         <h3>{consent.title ?? 'Consent'}</h3>
-        {consent.expiresAt ? <p className="muted">Expires {formatClinicDate(consent.expiresAt)}</p> : null}
+        {consent.expiresAt ? (
+          <p className="muted">Expires {formatClinicDate(consent.expiresAt)}</p>
+        ) : null}
       </div>
       <SafeRichText html={consent.bodyHtml ?? ''} />
       {required.length ? (
@@ -1530,7 +2710,16 @@ function ConsentFlow({ assignmentId, onChanged }: { assignmentId: string; onChan
             const id = ack.id ?? `ack-${index}`;
             return (
               <label key={id} className="checkbox-card">
-                <input type="checkbox" checked={acknowledgements[id] === true} onChange={(event) => setAcknowledgements((current) => ({ ...current, [id]: event.target.checked }))} />
+                <input
+                  type="checkbox"
+                  checked={acknowledgements[id] === true}
+                  onChange={(event) =>
+                    setAcknowledgements((current) => ({
+                      ...current,
+                      [id]: event.target.checked,
+                    }))
+                  }
+                />
                 <span>{ack.label ?? 'I acknowledge this item.'}</span>
               </label>
             );
@@ -1539,7 +2728,14 @@ function ConsentFlow({ assignmentId, onChanged }: { assignmentId: string; onChan
       ) : null}
       <label className="document-field">
         <span>Signer type</span>
-        <select value={signerType} onChange={(event) => setSignerType(event.target.value as PublicConsentSignRequestDTOSignerTypeEnum)}>
+        <select
+          value={signerType}
+          onChange={(event) =>
+            setSignerType(
+              event.target.value as PublicConsentSignRequestDTOSignerTypeEnum,
+            )
+          }
+        >
           <option value="PATIENT">Patient</option>
           <option value="PARENT">Parent</option>
           <option value="GUARDIAN">Guardian</option>
@@ -1549,21 +2745,37 @@ function ConsentFlow({ assignmentId, onChanged }: { assignmentId: string; onChan
       </label>
       <label className="document-field">
         <span>Signer name *</span>
-        <input value={signerName} onChange={(event) => setSignerName(event.target.value)} />
+        <input
+          value={signerName}
+          onChange={(event) => setSignerName(event.target.value)}
+        />
       </label>
       {signerType !== 'PATIENT' ? (
         <label className="document-field">
           <span>Relationship to patient</span>
-          <input value={relationship} onChange={(event) => setRelationship(event.target.value)} />
+          <input
+            value={relationship}
+            onChange={(event) => setRelationship(event.target.value)}
+          />
         </label>
       ) : null}
       <label className="document-field">
         <span>Typed signature *</span>
-        <input value={typedSignature} onChange={(event) => setTypedSignature(event.target.value)} />
+        <input
+          value={typedSignature}
+          onChange={(event) => setTypedSignature(event.target.value)}
+        />
       </label>
       <label className="checkbox-card">
-        <input type="checkbox" checked={finalConfirmation} onChange={(event) => setFinalConfirmation(event.target.checked)} />
-        <span>I confirm that I am signing this consent electronically and that the information above is correct.</span>
+        <input
+          type="checkbox"
+          checked={finalConfirmation}
+          onChange={(event) => setFinalConfirmation(event.target.checked)}
+        />
+        <span>
+          I confirm that I am signing this consent electronically and that the
+          information above is correct.
+        </span>
       </label>
       {error ? <InlineError message={error} /> : null}
       <button type="button" disabled={busy} onClick={sign}>
@@ -1593,7 +2805,12 @@ function DocumentsSection({
         if (active) setDocuments(itemsResponse(response));
       })
       .catch((loadError) => {
-        if (active) setError(loadError instanceof Error ? loadError.message : 'Unable to load documents.');
+        if (active)
+          setError(
+            loadError instanceof Error
+              ? loadError.message
+              : 'Unable to load documents.',
+          );
       });
     return () => {
       active = false;
@@ -1603,32 +2820,55 @@ function DocumentsSection({
   async function download(documentId: string) {
     setError(null);
     try {
-      const result = await corePublic<{ downloadUrl?: string }>(`/care/documents/${encodeURIComponent(documentId)}/download`);
+      const result = await corePublic<{ downloadUrl?: string }>(
+        `/care/documents/${encodeURIComponent(documentId)}/download`,
+      );
       if (result.downloadUrl) window.location.assign(result.downloadUrl);
     } catch (downloadError) {
-      setError(downloadError instanceof Error ? downloadError.message : 'Unable to download this document.');
+      setError(
+        downloadError instanceof Error
+          ? downloadError.message
+          : 'Unable to download this document.',
+      );
     }
   }
 
   if (error) return <InlineError message={error} />;
-  if (!documents) return <ContentLoader />;
+  if (!documents) return <ContentLoader label={t('loadingDocumentList')} />;
   const selected = documents.find((item) => item.id === resourceId);
 
   return (
     <div className="care-two-column">
       <section className="care-block">
         <h2>Documents</h2>
-        <DocumentList documents={documents} activeId={resourceId} onOpen={(id) => onNavigate('documents', id)} />
+        <DocumentList
+          documents={documents}
+          activeId={resourceId}
+          onOpen={(id) => onNavigate('documents', id)}
+        />
       </section>
       <section className="care-block">
         <h2>Document details</h2>
-        {resourceId && !selected ? <InlineError message="That document is not available in this Care Page." /> : null}
+        {resourceId && !selected ? (
+          <InlineError message="That document is not available in this Care Page." />
+        ) : null}
         {selected ? (
           <div className="care-detail">
-            <strong>{selected.title ?? selected.originalFilename ?? 'Document'}</strong>
-            {selected.description ? <p className="muted">{selected.description}</p> : null}
-            <p className="muted">{selected.documentDate ? formatClinicDate(selected.documentDate) : selected.category}</p>
-            <button type="button" onClick={() => selected.id && download(selected.id)}>
+            <strong>
+              {selected.title ?? selected.originalFilename ?? 'Document'}
+            </strong>
+            {selected.description ? (
+              <p className="muted">{selected.description}</p>
+            ) : null}
+            <p className="muted">
+              {selected.documentDate
+                ? formatClinicDate(selected.documentDate)
+                : selected.category}
+            </p>
+            <button
+              type="button"
+              onClick={() => selected.id && download(selected.id)}
+            >
               <Download size={16} />
               Download
             </button>
@@ -1642,12 +2882,24 @@ function DocumentsSection({
 }
 
 function PaymentsSection() {
-  return <EmptyState>Payments are not available for this clinic yet.</EmptyState>;
+  return (
+    <EmptyState>Payments are not available for this clinic yet.</EmptyState>
+  );
 }
 
-function PendingTaskRow({ task, onOpen }: { task: PendingTask; onOpen: () => void }) {
+function PendingTaskRow({
+  task,
+  onOpen,
+}: {
+  task: PendingTask;
+  onOpen: () => void;
+}) {
   return (
-    <button type="button" className="care-list-item care-task-row" onClick={onOpen}>
+    <button
+      type="button"
+      className="care-list-item care-task-row"
+      onClick={onOpen}
+    >
       <span>
         <small className="care-task-type">{task.typeLabel}</small>
         <strong>{task.title}</strong>
@@ -1659,19 +2911,33 @@ function PendingTaskRow({ task, onOpen }: { task: PendingTask; onOpen: () => voi
   );
 }
 
-function OverviewAppointmentCard({ appointment, onOpen }: { appointment: ManagedAppointmentResponseDTO; onOpen: () => void }) {
+function OverviewAppointmentCard({
+  appointment,
+  onOpen,
+}: {
+  appointment: ManagedAppointmentResponseDTO;
+  onOpen: () => void;
+}) {
   const locationLabel = appointmentLocationLabel(appointment);
   const practitioner = practitionerDisplayName(appointment);
   const status = getPatientVisibleAppointmentStatus(appointment.status);
 
   return (
-    <button type="button" className="care-list-item care-appointment-card" onClick={onOpen}>
+    <button
+      type="button"
+      className="care-list-item care-appointment-card"
+      onClick={onOpen}
+    >
       <span className="care-appointment-main">
-        <strong className="care-appointment-title">{appointment.service?.name ?? t('appointmentFallback')}</strong>
+        <strong className="care-appointment-title">
+          {appointment.service?.name ?? t('appointmentFallback')}
+        </strong>
         {appointment.startAt ? (
           <small className="care-appointment-time">{`${formatClinicDate(appointment.startAt, appointment, 'long')} - ${formatClinicTime(appointment.startAt, appointment)}`}</small>
         ) : null}
-        {practitioner ? <small>{t('withPractitioner', { practitioner })}</small> : null}
+        {practitioner ? (
+          <small>{t('withPractitioner', { practitioner })}</small>
+        ) : null}
         {locationLabel ? <small>{locationLabel}</small> : null}
       </span>
       <span className="care-row-side">
@@ -1682,22 +2948,44 @@ function OverviewAppointmentCard({ appointment, onOpen }: { appointment: Managed
   );
 }
 
-function OverviewDocumentList({ documents, onOpen }: { documents: CareDocumentDTO[]; onOpen: (id: string) => void }) {
+function OverviewDocumentList({
+  documents,
+  onOpen,
+}: {
+  documents: CareDocumentDTO[];
+  onOpen: (id: string) => void;
+}) {
   return (
     <div className="care-list">
       {documents.map((document) => (
-        <OverviewDocumentRow key={document.id} document={document} onOpen={onOpen} />
+        <OverviewDocumentRow
+          key={document.id}
+          document={document}
+          onOpen={onOpen}
+        />
       ))}
     </div>
   );
 }
 
-function OverviewDocumentRow({ document, onOpen }: { document: CareDocumentDTO; onOpen: (id: string) => void }) {
+function OverviewDocumentRow({
+  document,
+  onOpen,
+}: {
+  document: CareDocumentDTO;
+  onOpen: (id: string) => void;
+}) {
   const meta = documentMeta(document);
   return (
-    <button type="button" className="care-list-item care-document-row" onClick={() => document.id && onOpen(document.id)}>
+    <button
+      type="button"
+      className="care-list-item care-document-row"
+      onClick={() => document.id && onOpen(document.id)}
+    >
       <span>
-        <strong>{document.title ?? document.originalFilename ?? t('documentFallback')}</strong>
+        <strong>
+          {document.title ?? document.originalFilename ?? t('documentFallback')}
+        </strong>
         {meta ? <small>{meta}</small> : null}
       </span>
       <ArrowRight size={16} />
@@ -1712,7 +3000,15 @@ function GroupedTasks({
   onOpen,
 }: {
   title: string;
-  items: Array<{ id?: string; title?: string; status?: string; dueAt?: string; expiresAt?: string; assignedAt?: string; requestedAt?: string }>;
+  items: Array<{
+    id?: string;
+    title?: string;
+    status?: string;
+    dueAt?: string;
+    expiresAt?: string;
+    assignedAt?: string;
+    requestedAt?: string;
+  }>;
   activeId?: string;
   onOpen: (id: string) => void;
 }) {
@@ -1723,7 +3019,9 @@ function GroupedTasks({
         {items.map((item) => (
           <button
             type="button"
-            className={item.id === activeId ? 'care-list-item active' : 'care-list-item'}
+            className={
+              item.id === activeId ? 'care-list-item active' : 'care-list-item'
+            }
             key={item.id}
             onClick={() => item.id && onOpen(item.id)}
           >
@@ -1749,34 +3047,52 @@ function overviewTasks(overview: CareOverviewDTO): PendingTask[] {
         id: form.id!,
         view: 'forms',
         typeLabel: t('form'),
-        title: form.title ?? t('form'),
+        title: formDisplayTitle(form as CareFormTitleSource, t('form')),
         actionLabel: t('completeForm'),
-        context: taskContext(form.appointmentId, nextAppointmentId, form.dueAt ?? form.assignedAt),
+        context: taskContext(
+          form.appointmentId,
+          nextAppointmentId,
+          form.dueAt ?? form.assignedAt,
+        ),
         appointmentId: form.appointmentId,
         orderAt: form.dueAt ?? form.assignedAt,
       })),
     ...(overview.pendingConsents ?? [])
-      .filter((consent) => consent.id && pendingConsentStatuses.has(consent.status ?? ''))
+      .filter(
+        (consent) =>
+          consent.id && pendingConsentStatuses.has(consent.status ?? ''),
+      )
       .map((consent): PendingTask => ({
         id: consent.id!,
         view: 'consents',
         typeLabel: t('consent'),
         title: consent.title ?? t('consent'),
         actionLabel: t('reviewAndSign'),
-        context: taskContext(consent.appointmentId, nextAppointmentId, consent.expiresAt ?? consent.requestedAt),
+        context: taskContext(
+          consent.appointmentId,
+          nextAppointmentId,
+          consent.expiresAt ?? consent.requestedAt,
+        ),
         appointmentId: consent.appointmentId,
         orderAt: consent.expiresAt ?? consent.requestedAt,
       })),
   ].sort((left, right) => {
-    const leftForNext = left.appointmentId && left.appointmentId === nextAppointmentId ? 0 : 1;
-    const rightForNext = right.appointmentId && right.appointmentId === nextAppointmentId ? 0 : 1;
+    const leftForNext =
+      left.appointmentId && left.appointmentId === nextAppointmentId ? 0 : 1;
+    const rightForNext =
+      right.appointmentId && right.appointmentId === nextAppointmentId ? 0 : 1;
     if (leftForNext !== rightForNext) return leftForNext - rightForNext;
     return timestamp(left.orderAt) - timestamp(right.orderAt);
   });
 }
 
-function taskContext(appointmentId?: string, nextAppointmentId?: string, date?: string) {
-  if (appointmentId && appointmentId === nextAppointmentId) return t('forNextAppointment');
+function taskContext(
+  appointmentId?: string,
+  nextAppointmentId?: string,
+  date?: string,
+) {
+  if (appointmentId && appointmentId === nextAppointmentId)
+    return t('forNextAppointment');
   if (date) return t('dueDate', { date: formatClinicDate(date) });
   return undefined;
 }
@@ -1790,17 +3106,36 @@ function timestamp(value?: string) {
 function practitionerDisplayName(appointment: ManagedAppointmentResponseDTO) {
   const practitioner = appointment.practitioner;
   if (!practitioner) return '';
-  return practitioner.displayName?.trim() || [practitioner.prefix, practitioner.firstName, practitioner.lastName].filter(Boolean).join(' ').trim();
+  return (
+    practitioner.displayName?.trim() ||
+    [practitioner.prefix, practitioner.firstName, practitioner.lastName]
+      .filter(Boolean)
+      .join(' ')
+      .trim()
+  );
 }
 
 function appointmentLocationLabel(appointment: ManagedAppointmentResponseDTO) {
-  if (appointment.deliveryMode === 'VIRTUAL' || appointment.location?.type === 'VIRTUAL') return t('virtualAppointment');
-  return appointment.location?.publicDisplayName?.trim() || appointment.location?.name?.trim() || '';
+  if (
+    appointment.deliveryMode === 'VIRTUAL' ||
+    appointment.location?.type === 'VIRTUAL'
+  )
+    return t('virtualAppointment');
+  return (
+    appointment.location?.publicDisplayName?.trim() ||
+    appointment.location?.name?.trim() ||
+    ''
+  );
 }
 
 function documentMeta(document: CareDocumentDTO) {
   const date = document.documentDate ?? document.createdAt;
-  return [date ? formatClinicDate(date) : null, document.category ?? document.contentType].filter(Boolean).join(' - ');
+  return [
+    date ? formatClinicDate(date) : null,
+    document.category ?? document.contentType,
+  ]
+    .filter(Boolean)
+    .join(' - ');
 }
 
 function getPatientVisibleAppointmentStatus(status?: string | null) {
@@ -1831,9 +3166,16 @@ type AppointmentGroups = {
   past: ManagedAppointmentResponseDTO[];
 };
 
-const terminalAppointmentStatuses = new Set(['CANCELLED', 'COMPLETED', 'NO_SHOW']);
+const terminalAppointmentStatuses = new Set([
+  'CANCELLED',
+  'COMPLETED',
+  'NO_SHOW',
+]);
 
-function groupAppointments(appointments: ManagedAppointmentResponseDTO[], now = new Date()): AppointmentGroups {
+function groupAppointments(
+  appointments: ManagedAppointmentResponseDTO[],
+  now = new Date(),
+): AppointmentGroups {
   const nowTime = now.getTime();
   const upcoming = appointments
     .filter((appointment) => isUpcomingAppointment(appointment, nowTime))
@@ -1844,8 +3186,15 @@ function groupAppointments(appointments: ManagedAppointmentResponseDTO[], now = 
   return { upcoming, past };
 }
 
-function isUpcomingAppointment(appointment: ManagedAppointmentResponseDTO, nowTime: number) {
-  if (!appointment.startAt || terminalAppointmentStatuses.has(appointment.status ?? '')) return false;
+function isUpcomingAppointment(
+  appointment: ManagedAppointmentResponseDTO,
+  nowTime: number,
+) {
+  if (
+    !appointment.startAt ||
+    terminalAppointmentStatuses.has(appointment.status ?? '')
+  )
+    return false;
   return appointmentTime(appointment) >= nowTime;
 }
 
@@ -1857,10 +3206,17 @@ function relevantAppointment(groups: AppointmentGroups) {
   return groups.upcoming[0] ?? groups.past[0] ?? null;
 }
 
-function getDefaultDesktopAppointment(groups: AppointmentGroups, excludedIds = new Set<string>()) {
+function getDefaultDesktopAppointment(
+  groups: AppointmentGroups,
+  excludedIds = new Set<string>(),
+) {
   return relevantAppointment({
-    upcoming: groups.upcoming.filter((appointment) => !appointment.id || !excludedIds.has(appointment.id)),
-    past: groups.past.filter((appointment) => !appointment.id || !excludedIds.has(appointment.id)),
+    upcoming: groups.upcoming.filter(
+      (appointment) => !appointment.id || !excludedIds.has(appointment.id),
+    ),
+    past: groups.past.filter(
+      (appointment) => !appointment.id || !excludedIds.has(appointment.id),
+    ),
   });
 }
 
@@ -1873,7 +3229,9 @@ function appointmentAddress(appointment: ManagedAppointmentResponseDTO) {
   return [
     address?.addressLine1,
     address?.addressLine2,
-    [address?.city, address?.stateOrRegion, address?.postalCode].filter(Boolean).join(', '),
+    [address?.city, address?.stateOrRegion, address?.postalCode]
+      .filter(Boolean)
+      .join(', '),
     address?.countryCode,
   ]
     .filter(Boolean)
@@ -1884,7 +3242,10 @@ function toDateKey(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 
-function buildRescheduleDays(settings: ManagedAppointmentResponseDTO, count: number) {
+function buildRescheduleDays(
+  settings: ManagedAppointmentResponseDTO,
+  count: number,
+) {
   return Array.from({ length: count }).map((_, index) => {
     const date = new Date();
     date.setHours(0, 0, 0, 0);
@@ -1892,7 +3253,9 @@ function buildRescheduleDays(settings: ManagedAppointmentResponseDTO, count: num
     const key = toDateKey(date);
     return {
       key,
-      weekday: new Intl.DateTimeFormat(careLocale(), { weekday: 'short' }).format(date),
+      weekday: new Intl.DateTimeFormat(careLocale(), {
+        weekday: 'short',
+      }).format(date),
       label: formatClinicDate(`${key}T00:00:00`, settings),
     };
   });
@@ -1907,16 +3270,27 @@ function slotDateKey(slot: AvailabilitySlotResponseDTO) {
   return slot.startAt?.slice(0, 10);
 }
 
-function mergeAvailabilitySlots(current: AvailabilitySlotResponseDTO[], incoming: AvailabilitySlotResponseDTO[]) {
+function mergeAvailabilitySlots(
+  current: AvailabilitySlotResponseDTO[],
+  incoming: AvailabilitySlotResponseDTO[],
+) {
   const merged = new Map<string, AvailabilitySlotResponseDTO>();
   [...current, ...incoming].forEach((slot) => {
     if (!slot.startAt) return;
-    merged.set(`${slot.locationId ?? ''}:${slot.employeeId ?? ''}:${slot.startAt}`, slot);
+    merged.set(
+      `${slot.locationId ?? ''}:${slot.employeeId ?? ''}:${slot.startAt}`,
+      slot,
+    );
   });
-  return Array.from(merged.values()).sort((left, right) => String(left.startAt).localeCompare(String(right.startAt)));
+  return Array.from(merged.values()).sort((left, right) =>
+    String(left.startAt).localeCompare(String(right.startAt)),
+  );
 }
 
-function groupRescheduleAvailability(days: RescheduleDay[], slotsByDate: Map<string, AvailabilitySlotResponseDTO[]>): RescheduleAvailabilityGroup[] {
+function groupRescheduleAvailability(
+  days: RescheduleDay[],
+  slotsByDate: Map<string, AvailabilitySlotResponseDTO[]>,
+): RescheduleAvailabilityGroup[] {
   const groups: RescheduleAvailabilityGroup[] = [];
   let emptyStart: RescheduleDay | null = null;
   let emptyEnd: RescheduleDay | null = null;
@@ -1929,7 +3303,8 @@ function groupRescheduleAvailability(days: RescheduleDay[], slotsByDate: Map<str
     }
     const daySlots = slotsByDate.get(day.key) ?? [];
     if (daySlots.length) {
-      if (emptyStart && emptyEnd) groups.push({ type: 'empty', start: emptyStart, end: emptyEnd });
+      if (emptyStart && emptyEnd)
+        groups.push({ type: 'empty', start: emptyStart, end: emptyEnd });
       emptyStart = null;
       emptyEnd = null;
       groups.push({ type: 'slots', day, slots: daySlots });
@@ -1939,7 +3314,8 @@ function groupRescheduleAvailability(days: RescheduleDay[], slotsByDate: Map<str
     emptyEnd = day;
   });
 
-  if (emptyStart && emptyEnd) groups.push({ type: 'empty', start: emptyStart, end: emptyEnd });
+  if (emptyStart && emptyEnd)
+    groups.push({ type: 'empty', start: emptyStart, end: emptyEnd });
   return groups;
 }
 
@@ -1948,7 +3324,9 @@ function rescheduleDayLabel(day: RescheduleDay) {
 }
 
 function rescheduleDayRangeLabel(start: RescheduleDay, end: RescheduleDay) {
-  return start.key === end.key ? rescheduleDayLabel(start) : `${rescheduleDayLabel(start)} - ${rescheduleDayLabel(end)}`;
+  return start.key === end.key
+    ? rescheduleDayLabel(start)
+    : `${rescheduleDayLabel(start)} - ${rescheduleDayLabel(end)}`;
 }
 
 function humanizeStatus(status: string) {
@@ -1961,11 +3339,11 @@ function humanizeStatus(status: string) {
 }
 
 function useNarrowCareViewport() {
-  const [narrow, setNarrow] = useState<boolean | null>(() => (
+  const [narrow, setNarrow] = useState<boolean | null>(() =>
     typeof window !== 'undefined' && window.matchMedia
       ? window.matchMedia('(max-width: 640px)').matches
-      : null
-  ));
+      : null,
+  );
 
   useEffect(() => {
     if (typeof window === 'undefined' || !window.matchMedia) {
@@ -2034,13 +3412,21 @@ function AppointmentCard({
     <button
       type="button"
       aria-current={active ? 'true' : undefined}
-      className={active ? 'care-list-item care-appointment-list-card active' : 'care-list-item care-appointment-list-card'}
+      className={
+        active
+          ? 'care-list-item care-appointment-list-card active'
+          : 'care-list-item care-appointment-list-card'
+      }
       onClick={onOpen}
       ref={buttonRef}
     >
       <span>
         <strong>{appointmentTitle(appointment)}</strong>
-        {appointment.startAt ? <small>{formatClinicDateTime(appointment.startAt, appointment)}</small> : null}
+        {appointment.startAt ? (
+          <small>
+            {formatClinicDateTime(appointment.startAt, appointment)}
+          </small>
+        ) : null}
         {status ? <small className="care-list-status">{status}</small> : null}
       </span>
       <ArrowRight size={16} aria-hidden="true" />
@@ -2048,13 +3434,18 @@ function AppointmentCard({
   );
 }
 
-function AppointmentFacts({ appointment }: { appointment: ManagedAppointmentResponseDTO }) {
+function AppointmentFacts({
+  appointment,
+}: {
+  appointment: ManagedAppointmentResponseDTO;
+}) {
   const location = appointment.location;
   const address = appointmentAddress(appointment);
   const status = getPatientVisibleAppointmentStatus(appointment.status);
   const locationName = appointmentLocationLabel(appointment);
   const practitioner = practitionerDisplayName(appointment);
-  const duration = appointment.durationMinutes ?? appointment.service?.durationMinutes;
+  const duration =
+    appointment.durationMinutes ?? appointment.service?.durationMinutes;
 
   return (
     <div className="care-facts care-appointment-summary">
@@ -2063,18 +3454,41 @@ function AppointmentFacts({ appointment }: { appointment: ManagedAppointmentResp
           <h3>{appointmentTitle(appointment)}</h3>
           {appointment.startAt ? (
             <>
-              <p className="care-summary-date">{formatClinicDate(appointment.startAt, { ...appointment, timezone: location?.timezone || appointment.timezone }, 'long')}</p>
-              <p className="care-summary-time">{formatClinicTime(appointment.startAt, { ...appointment, timezone: location?.timezone || appointment.timezone })}</p>
+              <p className="care-summary-date">
+                {formatClinicDate(
+                  appointment.startAt,
+                  {
+                    ...appointment,
+                    timezone: location?.timezone || appointment.timezone,
+                  },
+                  'long',
+                )}
+              </p>
+              <p className="care-summary-time">
+                {formatClinicTime(appointment.startAt, {
+                  ...appointment,
+                  timezone: location?.timezone || appointment.timezone,
+                })}
+              </p>
             </>
           ) : null}
         </div>
         {status ? <span className="care-status-pill">{status}</span> : null}
       </div>
       <dl className="care-fact-list">
-        {practitioner ? <FactRow label={t('practitioner')} value={practitioner} /> : null}
-        {locationName ? <FactRow label={t('location')} value={locationName} /> : null}
+        {practitioner ? (
+          <FactRow label={t('practitioner')} value={practitioner} />
+        ) : null}
+        {locationName ? (
+          <FactRow label={t('location')} value={locationName} />
+        ) : null}
         {address ? <FactRow label={t('address')} value={address} /> : null}
-        {duration ? <FactRow label={t('duration')} value={t('durationMinutes', { count: duration })} /> : null}
+        {duration ? (
+          <FactRow
+            label={t('duration')}
+            value={t('durationMinutes', { count: duration })}
+          />
+        ) : null}
       </dl>
     </div>
   );
@@ -2102,11 +3516,21 @@ function MobileAppointmentRescheduleView({
 }) {
   return (
     <section className="care-block care-mobile-reschedule-page">
-      <button type="button" aria-label={t('backToAppointmentDetails')} className="care-mobile-back" onClick={onBack}>
+      <button
+        type="button"
+        aria-label={t('backToAppointmentDetails')}
+        className="care-mobile-back"
+        onClick={onBack}
+      >
         <ArrowLeft size={16} aria-hidden="true" />
         {t('appointmentDetails')}
       </button>
-      <AppointmentRescheduleFlow appointment={appointment} onCancel={onBack} onSubmit={onSubmit} onSuccess={onSuccess} />
+      <AppointmentRescheduleFlow
+        appointment={appointment}
+        onCancel={onBack}
+        onSubmit={onSubmit}
+        onSuccess={onSuccess}
+      />
     </section>
   );
 }
@@ -2125,9 +3549,14 @@ function CancelAppointmentDialog({
   const dialogRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previous =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
     requestAnimationFrame(() => {
-      const focusTarget = dialogRef.current?.querySelector<HTMLElement>('button:not([disabled])');
+      const focusTarget = dialogRef.current?.querySelector<HTMLElement>(
+        'button:not([disabled])',
+      );
       focusTarget?.focus({ preventScroll: true });
     });
 
@@ -2139,7 +3568,11 @@ function CancelAppointmentDialog({
       }
       const dialog = dialogRef.current;
       if (event.key !== 'Tab' || !dialog) return;
-      const focusable = Array.from(dialog.querySelectorAll<HTMLElement>('button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'));
+      const focusable = Array.from(
+        dialog.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        ),
+      );
       if (!focusable.length) return;
       const first = focusable[0];
       const last = focusable[focusable.length - 1];
@@ -2160,7 +3593,10 @@ function CancelAppointmentDialog({
   }, [busy, onClose]);
 
   return (
-    <div className="care-dialog-overlay care-cancel-dialog-overlay" onMouseDown={() => !busy && onClose()}>
+    <div
+      className="care-dialog-overlay care-cancel-dialog-overlay"
+      onMouseDown={() => !busy && onClose()}
+    >
       <div
         aria-labelledby="care-cancel-dialog-title"
         aria-describedby="care-cancel-dialog-description"
@@ -2170,20 +3606,37 @@ function CancelAppointmentDialog({
         ref={dialogRef}
         role="dialog"
       >
-        <section className="care-confirm-content" aria-labelledby="care-cancel-dialog-title">
+        <section
+          className="care-confirm-content"
+          aria-labelledby="care-cancel-dialog-title"
+        >
           <header className="care-confirm-header">
             <h2 id="care-cancel-dialog-title">{t('cancelAppointmentTitle')}</h2>
           </header>
-          <div className="care-confirm-description" id="care-cancel-dialog-description">
+          <div
+            className="care-confirm-description"
+            id="care-cancel-dialog-description"
+          >
             <p className="muted">{t('cancelAppointmentDescription')}</p>
             <p className="muted">{t('cancelAppointmentClinicNotified')}</p>
           </div>
           {error ? <InlineError message={error} /> : null}
           <div className="actions care-confirm-actions">
-            <button type="button" className="secondary" disabled={busy} onClick={onClose}>
+            <button
+              type="button"
+              className="secondary"
+              disabled={busy}
+              onClick={onClose}
+            >
               {t('keepAppointment')}
             </button>
-            <button type="button" className="danger-confirm-action" disabled={busy} aria-busy={busy} onClick={onConfirm}>
+            <button
+              type="button"
+              className="danger-confirm-action"
+              disabled={busy}
+              aria-busy={busy}
+              onClick={onConfirm}
+            >
               {busy ? t('cancellingAppointment') : t('cancelAppointment')}
             </button>
           </div>
@@ -2208,10 +3661,15 @@ function AppointmentRescheduleDialog({
   const [dirty, setDirty] = useState(false);
 
   useEffect(() => {
-    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previous =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
     const dialog = dialogRef.current;
     requestAnimationFrame(() => {
-      const focusTarget = dialog?.querySelector<HTMLElement>('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+      const focusTarget = dialog?.querySelector<HTMLElement>(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+      );
       focusTarget?.focus();
     });
 
@@ -2222,7 +3680,11 @@ function AppointmentRescheduleDialog({
         return;
       }
       if (event.key !== 'Tab' || !dialog) return;
-      const focusable = Array.from(dialog.querySelectorAll<HTMLElement>('button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'));
+      const focusable = Array.from(
+        dialog.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        ),
+      );
       if (!focusable.length) return;
       const first = focusable[0];
       const last = focusable[focusable.length - 1];
@@ -2243,7 +3705,10 @@ function AppointmentRescheduleDialog({
   }, [dirty, onClose]);
 
   return (
-    <div className="care-dialog-overlay" onMouseDown={() => !dirty && onClose()}>
+    <div
+      className="care-dialog-overlay"
+      onMouseDown={() => !dirty && onClose()}
+    >
       <div
         aria-labelledby="care-reschedule-dialog-title"
         aria-modal="true"
@@ -2280,8 +3745,11 @@ function AppointmentRescheduleFlow({
   onSuccess: () => void;
   titleId?: string;
 }) {
-  const [slots, setSlots] = useState<AvailabilitySlotResponseDTO[] | null>(null);
-  const [selectedSlot, setSelectedSlot] = useState<AvailabilitySlotResponseDTO | null>(null);
+  const [slots, setSlots] = useState<AvailabilitySlotResponseDTO[] | null>(
+    null,
+  );
+  const [selectedSlot, setSelectedSlot] =
+    useState<AvailabilitySlotResponseDTO | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -2289,9 +3757,20 @@ function AppointmentRescheduleFlow({
   const [step, setStep] = useState<'choose' | 'confirm'>('choose');
   const [submitting, setSubmitting] = useState(false);
   const [availabilityKey, setAvailabilityKey] = useState(0);
-  const [visibleDayCount, setVisibleDayCount] = useState(INITIAL_RESCHEDULE_DAY_COUNT);
-  const days = useMemo(() => (appointment ? buildRescheduleDays(appointment, MAX_RESCHEDULE_DAY_COUNT) : []), [appointment]);
-  const visibleDays = useMemo(() => days.slice(0, visibleDayCount), [days, visibleDayCount]);
+  const [visibleDayCount, setVisibleDayCount] = useState(
+    INITIAL_RESCHEDULE_DAY_COUNT,
+  );
+  const days = useMemo(
+    () =>
+      appointment
+        ? buildRescheduleDays(appointment, MAX_RESCHEDULE_DAY_COUNT)
+        : [],
+    [appointment],
+  );
+  const visibleDays = useMemo(
+    () => days.slice(0, visibleDayCount),
+    [days, visibleDayCount],
+  );
   const slotsByDate = useMemo(() => {
     const grouped = new Map<string, AvailabilitySlotResponseDTO[]>();
     (slots ?? []).forEach((slot) => {
@@ -2300,27 +3779,40 @@ function AppointmentRescheduleFlow({
       grouped.set(key, [...(grouped.get(key) ?? []), slot]);
     });
     grouped.forEach((dateSlots, key) => {
-      grouped.set(key, dateSlots.sort((left, right) => String(left.startAt).localeCompare(String(right.startAt))));
+      grouped.set(
+        key,
+        dateSlots.sort((left, right) =>
+          String(left.startAt).localeCompare(String(right.startAt)),
+        ),
+      );
     });
     return grouped;
   }, [slots]);
-  const availabilityGroups = useMemo(() => groupRescheduleAvailability(visibleDays, slotsByDate), [visibleDays, slotsByDate]);
+  const availabilityGroups = useMemo(
+    () => groupRescheduleAvailability(visibleDays, slotsByDate),
+    [visibleDays, slotsByDate],
+  );
   const canLoadMoreDays = visibleDayCount < days.length;
   const canLoadAvailability = Boolean(appointment?.id);
 
-  const fetchAvailabilityRange = useCallback(async (fromIndex: number, toIndexExclusive: number) => {
-    if (!appointment?.id) throw new Error('APPOINTMENT_NOT_RESCHEDULABLE');
-    const firstDay = days[fromIndex];
-    const lastDay = days[toIndexExclusive - 1];
-    if (!firstDay || !lastDay) return [];
+  const fetchAvailabilityRange = useCallback(
+    async (fromIndex: number, toIndexExclusive: number) => {
+      if (!appointment?.id) throw new Error('APPOINTMENT_NOT_RESCHEDULABLE');
+      const firstDay = days[fromIndex];
+      const lastDay = days[toIndexExclusive - 1];
+      if (!firstDay || !lastDay) return [];
 
-    const query = new URLSearchParams({
-      from: firstDay.key,
-      to: lastDay.key,
-    });
-    const items = await corePublic<AvailabilitySlotResponseDTO[]>(`/care/appointments/${encodeURIComponent(appointment.id)}/availability?${query}`);
-    return items.filter((slot) => slot.startAt);
-  }, [appointment?.id, days]);
+      const query = new URLSearchParams({
+        from: firstDay.key,
+        to: lastDay.key,
+      });
+      const items = await corePublic<AvailabilitySlotResponseDTO[]>(
+        `/care/appointments/${encodeURIComponent(appointment.id)}/availability?${query}`,
+      );
+      return items.filter((slot) => slot.startAt);
+    },
+    [appointment?.id, days],
+  );
 
   useEffect(() => {
     onDirtyChange?.(Boolean(selectedSlot) || step !== 'choose');
@@ -2356,7 +3848,11 @@ function AppointmentRescheduleFlow({
       .catch((error) => {
         if (active) {
           setSlots([]);
-          setError(isRescheduleNoLongerAllowedError(error) ? t('rescheduleNoLongerAllowed') : t('rescheduleUnavailable'));
+          setError(
+            isRescheduleNoLongerAllowedError(error)
+              ? t('rescheduleNoLongerAllowed')
+              : t('rescheduleUnavailable'),
+          );
         }
       })
       .finally(() => {
@@ -2366,19 +3862,34 @@ function AppointmentRescheduleFlow({
     return () => {
       active = false;
     };
-  }, [appointment, availabilityKey, canLoadAvailability, fetchAvailabilityRange]);
+  }, [
+    appointment,
+    availabilityKey,
+    canLoadAvailability,
+    fetchAvailabilityRange,
+  ]);
 
   async function loadMoreAvailability() {
     if (loadingMore || loading || !canLoadMoreDays) return;
-    const nextVisibleDayCount = Math.min(days.length, visibleDayCount + RESCHEDULE_DAY_LOAD_COUNT);
+    const nextVisibleDayCount = Math.min(
+      days.length,
+      visibleDayCount + RESCHEDULE_DAY_LOAD_COUNT,
+    );
     setLoadingMore(true);
     setLoadMoreError(null);
     try {
-      const items = await fetchAvailabilityRange(visibleDayCount, nextVisibleDayCount);
+      const items = await fetchAvailabilityRange(
+        visibleDayCount,
+        nextVisibleDayCount,
+      );
       setSlots((current) => mergeAvailabilitySlots(current ?? [], items));
       setVisibleDayCount(nextVisibleDayCount);
     } catch (error) {
-      setLoadMoreError(isRescheduleNoLongerAllowedError(error) ? t('rescheduleNoLongerAllowed') : t('rescheduleUnavailable'));
+      setLoadMoreError(
+        isRescheduleNoLongerAllowedError(error)
+          ? t('rescheduleNoLongerAllowed')
+          : t('rescheduleUnavailable'),
+      );
     } finally {
       setLoadingMore(false);
     }
@@ -2405,7 +3916,7 @@ function AppointmentRescheduleFlow({
     return (
       <section className="care-reschedule-flow" aria-labelledby={titleId}>
         <h2 id={titleId}>{t('rescheduleAppointment')}</h2>
-        <ContentLoader />
+        <ContentLoader label={t('loadingAppointment')} />
       </section>
     );
   }
@@ -2414,7 +3925,13 @@ function AppointmentRescheduleFlow({
     <section className="care-reschedule-flow" aria-labelledby={titleId}>
       <div className="care-block-heading">
         <h2 id={titleId}>{t('rescheduleAppointment')}</h2>
-        <button type="button" className="care-icon-action" aria-label={t('keepCurrentAppointment')} disabled={submitting} onClick={onCancel}>
+        <button
+          type="button"
+          className="care-icon-action"
+          aria-label={t('keepCurrentAppointment')}
+          disabled={submitting}
+          onClick={onCancel}
+        >
           <X size={18} aria-hidden="true" />
         </button>
       </div>
@@ -2423,15 +3940,30 @@ function AppointmentRescheduleFlow({
           <div className="reschedule-availability">
             <h3>{t('availableTimes')}</h3>
             {error ? <InlineError message={error} /> : null}
-            {loading ? <p className="muted reschedule-empty" aria-live="polite">{t('loadingAvailableTimes')}</p> : null}
+            {loading ? (
+              <p className="muted reschedule-empty" aria-live="polite">
+                {t('loadingAvailableTimes')}
+              </p>
+            ) : null}
             {!loading && !error ? (
               <div className="reschedule-day-list">
                 {availabilityGroups.map((group, index) => {
-                  const groupKey = group.type === 'slots' ? group.day.key : `${group.start.key}-${group.end.key}`;
-                  const startsMoreAvailability = index > 0 && groupKey.startsWith(days[INITIAL_RESCHEDULE_DAY_COUNT]?.key ?? '');
+                  const groupKey =
+                    group.type === 'slots'
+                      ? group.day.key
+                      : `${group.start.key}-${group.end.key}`;
+                  const startsMoreAvailability =
+                    index > 0 &&
+                    groupKey.startsWith(
+                      days[INITIAL_RESCHEDULE_DAY_COUNT]?.key ?? '',
+                    );
                   return (
                     <section key={groupKey} className="reschedule-day-section">
-                      {startsMoreAvailability ? <h3 className="reschedule-more-heading">{t('moreAvailability')}</h3> : null}
+                      {startsMoreAvailability ? (
+                        <h3 className="reschedule-more-heading">
+                          {t('moreAvailability')}
+                        </h3>
+                      ) : null}
                       {group.type === 'slots' ? (
                         <>
                           <h4>{rescheduleDayLabel(group.day)}</h4>
@@ -2440,20 +3972,34 @@ function AppointmentRescheduleFlow({
                               <button
                                 key={`${slot.employeeId}-${slot.startAt}`}
                                 type="button"
-                                className={selectedSlot?.startAt === slot.startAt && selectedSlot?.employeeId === slot.employeeId ? 'reschedule-time active' : 'reschedule-time'}
-                                aria-pressed={selectedSlot?.startAt === slot.startAt && selectedSlot?.employeeId === slot.employeeId}
+                                className={
+                                  selectedSlot?.startAt === slot.startAt &&
+                                  selectedSlot?.employeeId === slot.employeeId
+                                    ? 'reschedule-time active'
+                                    : 'reschedule-time'
+                                }
+                                aria-pressed={
+                                  selectedSlot?.startAt === slot.startAt &&
+                                  selectedSlot?.employeeId === slot.employeeId
+                                }
                                 disabled={submitting}
                                 onClick={() => setSelectedSlot(slot)}
                               >
-                                {slot.startAt ? formatClinicTime(slot.startAt, appointment) : ''}
+                                {slot.startAt
+                                  ? formatClinicTime(slot.startAt, appointment)
+                                  : ''}
                               </button>
                             ))}
                           </div>
                         </>
                       ) : (
                         <>
-                          <h4>{rescheduleDayRangeLabel(group.start, group.end)}</h4>
-                          <p className="muted reschedule-empty">{t('noAvailableTimes')}</p>
+                          <h4>
+                            {rescheduleDayRangeLabel(group.start, group.end)}
+                          </h4>
+                          <p className="muted reschedule-empty">
+                            {t('noAvailableTimes')}
+                          </p>
                         </>
                       )}
                     </section>
@@ -2470,16 +4016,32 @@ function AppointmentRescheduleFlow({
                     <ArrowRight size={14} aria-hidden="true" />
                   </button>
                 ) : null}
-                {loadingMore ? <p className="muted reschedule-empty reschedule-bottom-loader" aria-live="polite">{t('loadingAvailableTimes')}</p> : null}
+                {loadingMore ? (
+                  <p
+                    className="muted reschedule-empty reschedule-bottom-loader"
+                    aria-live="polite"
+                  >
+                    {t('loadingAvailableTimes')}
+                  </p>
+                ) : null}
                 {loadMoreError ? <InlineError message={loadMoreError} /> : null}
               </div>
             ) : null}
           </div>
           <div className="actions reschedule-flow-actions">
-            <button type="button" className="secondary" disabled={submitting} onClick={onCancel}>
+            <button
+              type="button"
+              className="secondary"
+              disabled={submitting}
+              onClick={onCancel}
+            >
               {t('keepCurrentAppointment')}
             </button>
-            <button type="button" disabled={!selectedSlot?.startAt || submitting} onClick={() => setStep('confirm')}>
+            <button
+              type="button"
+              disabled={!selectedSlot?.startAt || submitting}
+              onClick={() => setStep('confirm')}
+            >
               {t('continue')}
             </button>
           </div>
@@ -2489,16 +4051,38 @@ function AppointmentRescheduleFlow({
           <div className="reschedule-confirmation">
             <h3>{t('selectedTime')}</h3>
             <dl className="reschedule-details">
-              {appointment.startAt ? <FactRow label={t('currentTime')} value={formatClinicDateTime(appointment.startAt, appointment)} /> : null}
-              {selectedSlot?.startAt ? <FactRow label={t('newTime')} value={formatClinicDateTime(selectedSlot.startAt, appointment)} /> : null}
+              {appointment.startAt ? (
+                <FactRow
+                  label={t('currentTime')}
+                  value={formatClinicDateTime(appointment.startAt, appointment)}
+                />
+              ) : null}
+              {selectedSlot?.startAt ? (
+                <FactRow
+                  label={t('newTime')}
+                  value={formatClinicDateTime(
+                    selectedSlot.startAt,
+                    appointment,
+                  )}
+                />
+              ) : null}
             </dl>
           </div>
           {error ? <InlineError message={error} /> : null}
           <div className="actions reschedule-flow-actions">
-            <button type="button" className="secondary" disabled={submitting} onClick={() => setStep('choose')}>
+            <button
+              type="button"
+              className="secondary"
+              disabled={submitting}
+              onClick={() => setStep('choose')}
+            >
               {t('chooseAnotherTime')}
             </button>
-            <button type="button" disabled={submitting || !selectedSlot?.startAt} onClick={confirmReschedule}>
+            <button
+              type="button"
+              disabled={submitting || !selectedSlot?.startAt}
+              onClick={confirmReschedule}
+            >
               {t('confirmReschedule')}
             </button>
           </div>
@@ -2517,19 +4101,30 @@ function DocumentList({
   activeId?: string;
   onOpen: (id: string) => void;
 }) {
-  if (!documents.length) return <EmptyState>No documents are available.</EmptyState>;
+  if (!documents.length)
+    return <EmptyState>No documents are available.</EmptyState>;
   return (
     <div className="care-list">
       {documents.map((document) => (
         <button
           type="button"
-          className={document.id === activeId ? 'care-list-item active' : 'care-list-item'}
+          className={
+            document.id === activeId
+              ? 'care-list-item active'
+              : 'care-list-item'
+          }
           key={document.id}
           onClick={() => document.id && onOpen(document.id)}
         >
           <span>
-            <strong>{document.title ?? document.originalFilename ?? 'Document'}</strong>
-            <small>{document.documentDate ? formatClinicDate(document.documentDate) : document.category}</small>
+            <strong>
+              {document.title ?? document.originalFilename ?? 'Document'}
+            </strong>
+            <small>
+              {document.documentDate
+                ? formatClinicDate(document.documentDate)
+                : document.category}
+            </small>
           </span>
           <ArrowRight size={16} />
         </button>
@@ -2538,103 +4133,439 @@ function DocumentList({
   );
 }
 
+function CareFormSchemaNode({
+  node,
+  answers,
+  errors,
+  readOnly,
+  onChange,
+}: {
+  node: SchemaNode;
+  answers: Answers;
+  errors: FieldErrors;
+  readOnly: boolean;
+  onChange: (fieldId: string, value: unknown) => void;
+}) {
+  if (isColumnsNode(node)) {
+    const children = node.children ?? [];
+    const ratios = normalizedColumnRatios(node.ratios, children.length);
+    return (
+      <div
+        className="care-form-columns"
+        style={
+          {
+            '--care-form-columns-template': ratios
+              .map((ratio) => `minmax(0, ${ratio}fr)`)
+              .join(' '),
+          } as CSSProperties
+        }
+      >
+        {children.map((field) => (
+          <FieldInput
+            key={field.id}
+            field={field}
+            value={answers[field.id]}
+            error={errors[field.id]}
+            readOnly={readOnly}
+            onChange={(value) => onChange(field.id, value)}
+          />
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <FieldInput
+      field={node}
+      value={answers[node.id]}
+      error={errors[node.id]}
+      readOnly={readOnly}
+      onChange={(value) => onChange(node.id, value)}
+    />
+  );
+}
+
 function FieldInput({
   field,
   value,
   error,
+  readOnly = false,
   onChange,
 }: {
   field: Field;
   value: unknown;
   error?: string;
+  readOnly?: boolean;
   onChange: (value: unknown) => void;
 }) {
-  const label = text(field.label) || 'Field';
-  if (field.type === 'INFORMATION') return <SafeRichText html={field.content ?? ''} />;
+  const label = formTemplateText(field.label) || 'Field';
+  const inputId = `care-form-field-${field.id}`;
+  const labelId = `${inputId}-label`;
+  const descriptionId = field.description
+    ? `${inputId}-description`
+    : undefined;
+  const errorId = error ? `${inputId}-error` : undefined;
+  const describedBy =
+    [descriptionId, errorId].filter(Boolean).join(' ') || undefined;
+  const description = formTemplateText(field.description);
+  if (field.type === 'INFORMATION') {
+    const informationHtml = informationFieldContent(field, description, label);
+    if (!informationHtml) return null;
+    return (
+      <div
+        className="document-field care-form-information"
+        data-field-id={field.id}
+      >
+        <SafeRichText html={informationHtml} />
+      </div>
+    );
+  }
 
-  return (
-    <label className="document-field" data-invalid={error ? true : undefined}>
-      <span>
-        {label}
-        {field.required ? ' *' : ''}
-      </span>
-      {field.description ? <small>{text(field.description)}</small> : null}
-      {field.type === 'LONG_TEXT' || field.type === 'RICH_TEXT' ? (
-        <textarea value={typeof value === 'string' ? value : ''} onChange={(event) => onChange(event.target.value)} />
-      ) : field.type === 'BOOLEAN' || field.type === 'SIGNATURE_ACKNOWLEDGEMENT' ? (
-        <span className="checkbox-line">
-          <input type="checkbox" checked={value === true} onChange={(event) => onChange(event.target.checked)} />
-          <span>Yes</span>
+  if (field.type === 'SINGLE_CHOICE' && field.options?.length) {
+    return (
+      <fieldset
+        className="document-field care-choice-field"
+        data-field-id={field.id}
+        data-invalid={error ? true : undefined}
+        aria-labelledby={labelId}
+        aria-describedby={describedBy}
+      >
+        <span className="field-label" id={labelId}>
+          {label}
+          {field.required ? ' *' : ''}
         </span>
-      ) : field.type === 'MULTIPLE_CHOICE' ? (
-        <span className="choice-stack">
-          {field.options?.map((option) => {
-            const values = Array.isArray(value) ? value : [];
-            const checked = values.includes(option.id);
-            return (
-              <span key={option.id} className="checkbox-line">
-                <input
-                  type="checkbox"
-                  checked={checked}
-                  onChange={(event) => onChange(event.target.checked ? [...values, option.id] : values.filter((item) => item !== option.id))}
-                />
-                <span>{text(option.label) || option.id}</span>
-              </span>
-            );
-          })}
-        </span>
-      ) : field.type === 'SINGLE_CHOICE' && field.options?.length ? (
+        {field.description ? (
+          <small className="field-description" id={descriptionId}>
+            {description}
+          </small>
+        ) : null}
         <span className="choice-stack">
           {field.options.map((option) => {
             const selected = selectedSingleChoiceOptionId(value);
             const checked = selected === option.id;
             const other = isOtherOption(option);
             const otherText = singleChoiceOtherText(value);
+            const optionInputId = `${inputId}-${option.id}`;
             return (
               <span key={option.id} className="checkbox-line">
                 <input
+                  id={optionInputId}
+                  name={inputId}
                   type="radio"
                   checked={checked}
-                  onChange={() => onChange(other ? { optionId: option.id, text: otherText } : option.id)}
+                  disabled={readOnly}
+                  aria-describedby={describedBy}
+                  onChange={() =>
+                    onChange(
+                      other
+                        ? { optionId: option.id, text: otherText }
+                        : option.id,
+                    )
+                  }
                 />
-                <span>{text(option.label) || option.id}</span>
+                <label className="choice-option-label" htmlFor={optionInputId}>
+                  {formTemplateText(option.label) || option.id}
+                </label>
                 {other ? (
                   <input
                     className="other-choice-input"
                     type="text"
+                    tabIndex={-1}
                     value={checked ? otherText : ''}
-                    disabled={!checked}
-                    onChange={(event) => onChange({ optionId: option.id, text: event.target.value })}
-                    onFocus={() => onChange({ optionId: option.id, text: otherText })}
+                    disabled={readOnly}
+                    aria-invalid={error ? true : undefined}
+                    aria-describedby={describedBy}
+                    onChange={(event) =>
+                      onChange({
+                        optionId: option.id,
+                        text: event.target.value,
+                      })
+                    }
+                    onPointerDown={() => {
+                      if (!checked)
+                        onChange({ optionId: option.id, text: otherText });
+                    }}
+                    onFocus={() =>
+                      onChange({ optionId: option.id, text: otherText })
+                    }
                   />
                 ) : null}
               </span>
             );
           })}
         </span>
-      ) : field.options?.length ? (
-        <select value={typeof value === 'string' ? value : ''} onChange={(event) => onChange(event.target.value)}>
+        {error ? (
+          <small className="field-error" id={errorId}>
+            {error}
+          </small>
+        ) : null}
+      </fieldset>
+    );
+  }
+
+  if (field.type === 'BOOLEAN') {
+    return (
+      <fieldset
+        className="document-field care-choice-field"
+        data-field-id={field.id}
+        data-invalid={error ? true : undefined}
+        aria-labelledby={labelId}
+        aria-describedby={describedBy}
+      >
+        <span className="field-label" id={labelId}>
+          {label}
+          {field.required ? ' *' : ''}
+        </span>
+        {field.description ? (
+          <small className="field-description" id={descriptionId}>
+            {description}
+          </small>
+        ) : null}
+        <span className="choice-stack">
+          {[
+            { label: 'Yes', value: true },
+            { label: 'No', value: false },
+          ].map((option) => {
+            const optionInputId = `${inputId}-${option.label.toLowerCase()}`;
+            return (
+              <span key={option.label} className="checkbox-line">
+                <input
+                  id={optionInputId}
+                  name={inputId}
+                  type="radio"
+                  checked={value === option.value}
+                  disabled={readOnly}
+                  aria-describedby={describedBy}
+                  onChange={() => onChange(option.value)}
+                />
+                <label className="choice-option-label" htmlFor={optionInputId}>
+                  {option.label}
+                </label>
+              </span>
+            );
+          })}
+        </span>
+        {error ? (
+          <small className="field-error" id={errorId}>
+            {error}
+          </small>
+        ) : null}
+      </fieldset>
+    );
+  }
+
+  if (field.type === 'MULTIPLE_CHOICE' && field.options?.length) {
+    const values = selectedMultipleChoiceOptionIds(value);
+    const tabStopIndex = Math.max(
+      0,
+      field.options.findIndex((option) => values.includes(option.id)),
+    );
+    return (
+      <fieldset
+        className="document-field care-choice-field"
+        data-field-id={field.id}
+        data-invalid={error ? true : undefined}
+        aria-labelledby={labelId}
+        aria-describedby={describedBy}
+      >
+        <span className="field-label" id={labelId}>
+          {label}
+          {field.required ? ' *' : ''}
+        </span>
+        {field.description ? (
+          <small className="field-description" id={descriptionId}>
+            {description}
+          </small>
+        ) : null}
+        <span className="choice-stack">
+          {field.options.map((option, index) => {
+            const checked = values.includes(option.id);
+            const other = isOtherOption(option);
+            const otherText = multipleChoiceOtherText(value, option.id);
+            const optionInputId = `${inputId}-${option.id}`;
+            return (
+              <span key={option.id} className="checkbox-line">
+                <input
+                  id={optionInputId}
+                  type="checkbox"
+                  checked={checked}
+                  disabled={readOnly}
+                  tabIndex={index === tabStopIndex ? 0 : -1}
+                  aria-invalid={error ? true : undefined}
+                  aria-describedby={describedBy}
+                  onKeyDown={handleGroupedCheckboxKeyDown}
+                  onChange={(event) =>
+                    onChange(
+                      updateMultipleChoiceAnswer(
+                        value,
+                        option,
+                        event.target.checked,
+                        otherText,
+                      ),
+                    )
+                  }
+                />
+                <label className="choice-option-label" htmlFor={optionInputId}>
+                  {formTemplateText(option.label) || option.id}
+                </label>
+                {other ? (
+                  <input
+                    className="other-choice-input"
+                    type="text"
+                    tabIndex={checked ? 0 : -1}
+                    value={checked ? otherText : ''}
+                    disabled={readOnly}
+                    aria-invalid={error ? true : undefined}
+                    aria-describedby={describedBy}
+                    onChange={(event) =>
+                      onChange(
+                        updateMultipleChoiceAnswer(
+                          value,
+                          option,
+                          true,
+                          event.target.value,
+                        ),
+                      )
+                    }
+                    onPointerDown={() => {
+                      if (!checked)
+                        onChange(
+                          updateMultipleChoiceAnswer(
+                            value,
+                            option,
+                            true,
+                            otherText,
+                          ),
+                        );
+                    }}
+                    onFocus={() =>
+                      onChange(
+                        updateMultipleChoiceAnswer(
+                          value,
+                          option,
+                          true,
+                          otherText,
+                        ),
+                      )
+                    }
+                  />
+                ) : null}
+              </span>
+            );
+          })}
+        </span>
+        {error ? (
+          <small className="field-error" id={errorId}>
+            {error}
+          </small>
+        ) : null}
+      </fieldset>
+    );
+  }
+
+  return (
+    <label
+      className="document-field"
+      data-field-id={field.id}
+      data-invalid={error ? true : undefined}
+    >
+      <span className="field-label">
+        {label}
+        {field.required ? ' *' : ''}
+      </span>
+      {field.description ? (
+        <small className="field-description" id={descriptionId}>
+          {description}
+        </small>
+      ) : null}
+      {field.type === 'LONG_TEXT' || field.type === 'RICH_TEXT' ? (
+        <textarea
+          id={inputId}
+          value={typeof value === 'string' ? value : ''}
+          readOnly={readOnly}
+          aria-invalid={error ? true : undefined}
+          aria-describedby={describedBy}
+          onChange={(event) => onChange(event.target.value)}
+        />
+      ) : field.type === 'SIGNATURE_ACKNOWLEDGEMENT' ? (
+        <span className="checkbox-line">
+          <input
+            id={inputId}
+            type="checkbox"
+            checked={value === true}
+            disabled={readOnly}
+            aria-invalid={error ? true : undefined}
+            aria-describedby={describedBy}
+            onChange={(event) => onChange(event.target.checked)}
+          />
+          <span>Yes</span>
+        </span>
+      ) : field.type === 'DROPDOWN' && field.options?.length ? (
+        <select
+          id={inputId}
+          value={typeof value === 'string' ? value : ''}
+          disabled={readOnly}
+          aria-invalid={error ? true : undefined}
+          aria-describedby={describedBy}
+          onChange={(event) => onChange(event.target.value)}
+        >
           <option value="">Select</option>
           {field.options.map((option) => (
             <option key={option.id} value={option.id}>
-              {text(option.label) || option.id}
+              {formTemplateText(option.label) || option.id}
             </option>
           ))}
         </select>
       ) : (
         <input
-          type={field.type === 'DATE' ? 'date' : field.type === 'NUMBER' ? 'number' : 'text'}
-          value={typeof value === 'string' || typeof value === 'number' ? value : ''}
+          id={inputId}
+          type={inputTypeForField(field.type)}
+          value={
+            typeof value === 'string' || typeof value === 'number' ? value : ''
+          }
+          readOnly={readOnly}
+          aria-invalid={error ? true : undefined}
+          aria-describedby={describedBy}
           onChange={(event) => onChange(event.target.value)}
         />
       )}
-      {error ? <small className="field-error">{error}</small> : null}
+      {error ? (
+        <small className="field-error" id={errorId}>
+          {error}
+        </small>
+      ) : null}
     </label>
   );
 }
 
 function EmptyState({ children }: { children: ReactNode }) {
   return <div className="notice">{children}</div>;
+}
+
+function handleGroupedCheckboxKeyDown(
+  event: ReactKeyboardEvent<HTMLInputElement>,
+) {
+  const direction = checkboxArrowDirection(event.key);
+  if (!direction) return;
+
+  event.preventDefault();
+  const choices = Array.from(
+    event.currentTarget
+      .closest('.choice-stack')
+      ?.querySelectorAll<HTMLInputElement>('input[type="checkbox"]') ?? [],
+  ).filter((input) => !input.disabled);
+  const currentIndex = choices.indexOf(event.currentTarget);
+  if (currentIndex < 0 || choices.length < 2) return;
+
+  const nextIndex =
+    (currentIndex + direction + choices.length) % choices.length;
+  choices[nextIndex]?.focus();
+}
+
+function checkboxArrowDirection(key: string) {
+  if (key === 'ArrowDown' || key === 'ArrowRight') return 1;
+  if (key === 'ArrowUp' || key === 'ArrowLeft') return -1;
+  return 0;
 }
 
 function NeutralEmptyState({ children }: { children: ReactNode }) {
@@ -2646,13 +4577,29 @@ function InlineError({ message }: { message: string }) {
 }
 
 function SafeRichText({ html }: { html: string }) {
-  return <div className="safe-rich-text" dangerouslySetInnerHTML={{ __html: html }} />;
+  return (
+    <div
+      className="safe-rich-text"
+      dangerouslySetInnerHTML={{ __html: html }}
+    />
+  );
 }
 
-function text(value: LocalizedText) {
-  if (!value) return '';
-  if (typeof value === 'string') return value;
-  return value.en || value.fr || Object.values(value).find(Boolean) || '';
+function informationFieldContent(
+  field: Field,
+  description: string,
+  label: string,
+) {
+  const content = field.content?.trim();
+  if (content && !isDefaultInformationText(content))
+    return field.content ?? content;
+  if (label && !isDefaultInformationText(label)) return label;
+  if (description && !isDefaultInformationText(description)) return description;
+  return '';
+}
+
+function isDefaultInformationText(value: string) {
+  return value.trim().toLowerCase() === DEFAULT_INFORMATION_TEXT.toLowerCase();
 }
 
 function isOtherOption(option: Option) {
@@ -2676,19 +4623,76 @@ function singleChoiceOtherText(value: unknown) {
   return '';
 }
 
+function selectedMultipleChoiceOptionIds(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => {
+      if (typeof item === 'string') return item;
+      if (item && typeof item === 'object' && !Array.isArray(item)) {
+        const optionId = (item as { optionId?: unknown }).optionId;
+        return typeof optionId === 'string' ? optionId : '';
+      }
+      return '';
+    })
+    .filter(Boolean);
+}
+
+function multipleChoiceOtherText(value: unknown, optionId: string) {
+  if (!Array.isArray(value)) return '';
+  const answer = value.find(
+    (item) =>
+      item &&
+      typeof item === 'object' &&
+      !Array.isArray(item) &&
+      (item as { optionId?: unknown }).optionId === optionId,
+  );
+  const answerText = (answer as { text?: unknown } | undefined)?.text;
+  return typeof answerText === 'string' ? answerText : '';
+}
+
+function updateMultipleChoiceAnswer(
+  value: unknown,
+  option: Option,
+  checked: boolean,
+  text?: string,
+) {
+  const current = Array.isArray(value) ? value : [];
+  const withoutOption = current.filter((item) => {
+    if (typeof item === 'string') return item !== option.id;
+    if (item && typeof item === 'object' && !Array.isArray(item)) {
+      return (item as { optionId?: unknown }).optionId !== option.id;
+    }
+    return true;
+  });
+  if (!checked) return withoutOption;
+  if (isOtherOption(option))
+    return [...withoutOption, { optionId: option.id, text: text ?? '' }];
+  return [...withoutOption, option.id];
+}
+
 function isEmptyOtherChoiceAnswer(field: Field, value: unknown) {
-  if (field.type !== 'SINGLE_CHOICE') return false;
+  if (field.type !== 'SINGLE_CHOICE' && field.type !== 'MULTIPLE_CHOICE')
+    return false;
   const otherOption = (field.options ?? []).find(isOtherOption);
   if (!otherOption) return false;
+  if (field.type === 'MULTIPLE_CHOICE') {
+    if (!selectedMultipleChoiceOptionIds(value).includes(otherOption.id))
+      return false;
+    return !multipleChoiceOtherText(value, otherOption.id).trim();
+  }
   if (selectedSingleChoiceOptionId(value) !== otherOption.id) return false;
   return !singleChoiceOtherText(value).trim();
 }
 
-function validateRequired(schema: ClinicalSchema, answers: Answers, sectionId?: string) {
+function validateRequired(
+  schema: ClinicalSchema,
+  answers: Answers,
+  sectionId?: string,
+) {
   const errors: FieldErrors = {};
   schema.sections.forEach((section) => {
     if (sectionId && section.id !== sectionId) return;
-    section.fields.forEach((field) => {
+    fieldsInNodes(section.fields).forEach((field) => {
       if (!field.required || field.type === 'INFORMATION') return;
       const value = answers[field.id];
       const missing =
@@ -2697,15 +4701,19 @@ function validateRequired(schema: ClinicalSchema, answers: Answers, sectionId?: 
         value === '' ||
         (Array.isArray(value) && value.length === 0) ||
         isEmptyOtherChoiceAnswer(field, value) ||
-        ((field.type === 'BOOLEAN' || field.type === 'SIGNATURE_ACKNOWLEDGEMENT') && value !== true);
-      if (missing) errors[field.id] = 'Required field.';
+        (field.type === 'BOOLEAN' && typeof value !== 'boolean') ||
+        (field.type === 'SIGNATURE_ACKNOWLEDGEMENT' && value !== true);
+      if (missing) errors[field.id] = t('formRequiredField');
     });
   });
   return errors;
 }
 
 function completedText(reason: string | undefined | null, fallback: string) {
-  return reason === 'COMPLETED' || reason === 'SUBMITTED' || reason === 'SIGNED' || reason === 'REVIEWED'
+  return reason === 'COMPLETED' ||
+    reason === 'SUBMITTED' ||
+    reason === 'SIGNED' ||
+    reason === 'REVIEWED'
     ? 'This item has already been completed.'
     : fallback;
 }

@@ -2,7 +2,13 @@ import React from 'react';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import CarePageClient, {
   careNavRevealScrollLeft,
   careNavScrollAvailability,
@@ -52,29 +58,47 @@ function mockCareNavLayout() {
   let clientWidth = 320;
   let scrollWidth = 700;
 
-  const clientWidthSpy = vi.spyOn(Element.prototype, 'clientWidth', 'get').mockImplementation(function getClientWidth(this: Element) {
-    return this.classList.contains('care-nav') ? clientWidth : 0;
-  });
-  const scrollWidthSpy = vi.spyOn(Element.prototype, 'scrollWidth', 'get').mockImplementation(function getScrollWidth(this: Element) {
-    return this.classList.contains('care-nav') ? scrollWidth : 0;
-  });
-  const scrollLeftGetSpy = vi.spyOn(Element.prototype, 'scrollLeft', 'get').mockImplementation(function getScrollLeft(this: Element) {
-    return this.classList.contains('care-nav') ? scrollLeft : 0;
-  });
-  const scrollLeftSetSpy = vi.spyOn(Element.prototype, 'scrollLeft', 'set').mockImplementation(function setScrollLeft(this: Element, value) {
-    if (this.classList.contains('care-nav')) scrollLeft = Number(value);
-  });
-  const rectSpy = vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function getRect(this: Element) {
-    if (this.classList.contains('care-nav')) return rect(0, clientWidth);
-    if (this.textContent?.includes('Overview')) return rect(0 - scrollLeft, 120 - scrollLeft);
-    if (this.textContent?.includes('Appointments')) return rect(128 - scrollLeft, 270 - scrollLeft);
-    if (this.textContent?.includes('Forms')) return rect(278 - scrollLeft, 360 - scrollLeft);
-    if (this.textContent?.includes('Consents')) return rect(368 - scrollLeft, 478 - scrollLeft);
-    if (this.textContent?.includes('Documents')) return rect(586 - scrollLeft, 700 - scrollLeft);
-    return rect(0, 120);
-  });
+  const clientWidthSpy = vi
+    .spyOn(Element.prototype, 'clientWidth', 'get')
+    .mockImplementation(function getClientWidth(this: Element) {
+      return this.classList.contains('care-nav') ? clientWidth : 0;
+    });
+  const scrollWidthSpy = vi
+    .spyOn(Element.prototype, 'scrollWidth', 'get')
+    .mockImplementation(function getScrollWidth(this: Element) {
+      return this.classList.contains('care-nav') ? scrollWidth : 0;
+    });
+  const scrollLeftGetSpy = vi
+    .spyOn(Element.prototype, 'scrollLeft', 'get')
+    .mockImplementation(function getScrollLeft(this: Element) {
+      return this.classList.contains('care-nav') ? scrollLeft : 0;
+    });
+  const scrollLeftSetSpy = vi
+    .spyOn(Element.prototype, 'scrollLeft', 'set')
+    .mockImplementation(function setScrollLeft(this: Element, value) {
+      if (this.classList.contains('care-nav')) scrollLeft = Number(value);
+    });
+  const rectSpy = vi
+    .spyOn(Element.prototype, 'getBoundingClientRect')
+    .mockImplementation(function getRect(this: Element) {
+      if (this.classList.contains('care-nav')) return rect(0, clientWidth);
+      if (this.textContent?.includes('Overview'))
+        return rect(0 - scrollLeft, 120 - scrollLeft);
+      if (this.textContent?.includes('Appointments'))
+        return rect(128 - scrollLeft, 270 - scrollLeft);
+      if (this.textContent?.includes('Forms'))
+        return rect(278 - scrollLeft, 360 - scrollLeft);
+      if (this.textContent?.includes('Consents'))
+        return rect(368 - scrollLeft, 478 - scrollLeft);
+      if (this.textContent?.includes('Documents'))
+        return rect(586 - scrollLeft, 700 - scrollLeft);
+      return rect(0, 120);
+    });
   const originalScrollTo = HTMLElement.prototype.scrollTo;
-  const scrollToSpy = vi.fn(function scrollTo(this: HTMLElement, options?: ScrollToOptions | number) {
+  const scrollToSpy = vi.fn(function scrollTo(
+    this: HTMLElement,
+    options?: ScrollToOptions | number,
+  ) {
     if (!this.classList.contains('care-nav')) return;
     if (typeof options === 'number') {
       scrollLeft = options;
@@ -109,7 +133,8 @@ function mockCareNavLayout() {
           value: originalScrollTo,
         });
       } else {
-        delete (HTMLElement.prototype as unknown as { scrollTo?: unknown }).scrollTo;
+        delete (HTMLElement.prototype as unknown as { scrollTo?: unknown })
+          .scrollTo;
       }
     },
   };
@@ -150,7 +175,13 @@ function renderCarePage({
   boot?: ReturnType<typeof bootstrap>;
   overview?: Record<string, unknown>;
   extraResponses?: Map<string, unknown>;
-  initialView?: 'overview' | 'appointments' | 'forms' | 'consents' | 'documents' | 'payments';
+  initialView?:
+    | 'overview'
+    | 'appointments'
+    | 'forms'
+    | 'consents'
+    | 'documents'
+    | 'payments';
   initialResourceId?: string;
   initialAction?: 'reschedule';
   initialRawAction?: string;
@@ -159,13 +190,19 @@ function renderCarePage({
   if (initialView !== 'overview') params.set('view', initialView);
   if (initialResourceId) params.set('resourceId', initialResourceId);
   if (initialRawAction) params.set('action', initialRawAction);
-  else if (initialAction && initialResourceId) params.set('action', initialAction);
-  window.history.replaceState(null, '', params.toString() ? `/care?${params}` : '/care');
+  else if (initialAction && initialResourceId)
+    params.set('action', initialAction);
+  window.history.replaceState(
+    null,
+    '',
+    params.toString() ? `/care?${params}` : '/care',
+  );
 
   mockCorePublic.mockImplementation((path: string) => {
     if (path === '/care/bootstrap') return Promise.resolve(boot);
     if (path === '/care/overview') return Promise.resolve(overview);
-    if (extraResponses.has(path)) return Promise.resolve(extraResponses.get(path));
+    if (extraResponses.has(path))
+      return Promise.resolve(extraResponses.get(path));
     if (path === '/care/appointments') return Promise.resolve([]);
     if (path === '/care/documents') return Promise.resolve([]);
     if (path === '/care/forms') return Promise.resolve([]);
@@ -173,7 +210,13 @@ function renderCarePage({
     return Promise.resolve({});
   });
 
-  return render(<CarePageClient initialView={initialView} initialResourceId={initialResourceId} initialAction={initialAction} />);
+  return render(
+    <CarePageClient
+      initialView={initialView}
+      initialResourceId={initialResourceId}
+      initialAction={initialAction}
+    />,
+  );
 }
 
 function appointment(overrides: Record<string, unknown> = {}) {
@@ -198,6 +241,38 @@ function appointment(overrides: Record<string, unknown> = {}) {
     cancellationAllowed: true,
     rescheduleAllowed: true,
     timeFormat: 'H12',
+    ...overrides,
+  };
+}
+
+function publicForm(overrides: Record<string, unknown> = {}) {
+  return {
+    open: true,
+    status: 'SENT',
+    title: 'Patient intake',
+    description: 'Before your visit',
+    draft: {},
+    schema: {
+      sections: [
+        {
+          id: 'section-1',
+          label: 'Section 1',
+          fields: [
+            {
+              id: 'patient-info',
+              type: 'TEXT',
+              label: 'Patient informations',
+              required: true,
+            },
+          ],
+        },
+        {
+          id: 'section-2',
+          label: 'Medical details',
+          fields: [{ id: 'notes', type: 'LONG_TEXT', label: 'Notes' }],
+        },
+      ],
+    },
     ...overrides,
   };
 }
@@ -241,7 +316,9 @@ describe('CarePageClient overview', () => {
     renderCarePage();
 
     expect(await screen.findByText('Welcome, Karim')).toBeTruthy();
-    expect(screen.getByRole('heading', { level: 1, name: 'Clinic 17' })).toBeTruthy();
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Clinic 17' }),
+    ).toBeTruthy();
     expect(screen.queryByText('Secure Care Page')).toBeNull();
     expect(screen.queryByText('Upcoming appointments')).toBeNull();
     expect(screen.queryByText('Pending forms')).toBeNull();
@@ -275,6 +352,27 @@ describe('CarePageClient overview', () => {
     });
   });
 
+  it('shows a friendly expired-session page when the Care session cookie is missing', async () => {
+    window.history.replaceState(null, '', '/care');
+    mockCorePublic.mockImplementation((path: string) => {
+      if (path === '/care/bootstrap')
+        return Promise.reject(new Error('CARE_SESSION_REQUIRED'));
+      return Promise.resolve({});
+    });
+
+    render(<CarePageClient initialView="overview" />);
+
+    expect(
+      await screen.findByRole('heading', { name: 'Care Page unavailable' }),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        'Your secure Care Page session has expired. Please reopen your secure link.',
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText('CARE_SESSION_REQUIRED')).toBeNull();
+  });
+
   it('renders pending form and consent tasks with non-zero navigation badges', async () => {
     renderCarePage({
       boot: bootstrap({
@@ -285,21 +383,39 @@ describe('CarePageClient overview', () => {
       }),
       overview: {
         nextAppointment: { id: 'apt-1', service: { name: 'Consultation' } },
-        pendingForms: [{ id: 'form-1', title: 'Intake form', status: 'ASSIGNED', appointmentId: 'apt-1' }],
-        pendingConsents: [{ id: 'consent-1', title: 'Privacy consent', status: 'REQUESTED', requestedAt: '2026-07-24T10:00:00' }],
+        pendingForms: [
+          {
+            id: 'form-1',
+            title: 'Intake form',
+            status: 'ASSIGNED',
+            appointmentId: 'apt-1',
+          },
+        ],
+        pendingConsents: [
+          {
+            id: 'consent-1',
+            title: 'Privacy consent',
+            status: 'REQUESTED',
+            requestedAt: '2026-07-24T10:00:00',
+          },
+        ],
       },
     });
 
     expect(await screen.findByText('Things to complete')).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Forms, 2 pending' })).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Consents, 1 pending' })).toBeTruthy();
+    expect(
+      screen.getByRole('link', { name: 'Consents, 1 pending' }),
+    ).toBeTruthy();
     expect(screen.getByText('Complete form')).toBeTruthy();
     expect(screen.getByText('Review and sign')).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: /Intake form/i }));
 
     await waitFor(() => {
-      expect(router.replace).toHaveBeenCalledWith('/care?view=forms&resourceId=form-1');
+      expect(router.replace).toHaveBeenCalledWith(
+        '/care?view=forms&resourceId=form-1',
+      );
     });
   });
 
@@ -308,7 +424,9 @@ describe('CarePageClient overview', () => {
 
     await screen.findByText('Welcome, Karim');
     expect(screen.queryByRole('link', { name: 'Forms, 0 pending' })).toBeNull();
-    expect(screen.queryByRole('link', { name: 'Consents, 0 pending' })).toBeNull();
+    expect(
+      screen.queryByRole('link', { name: 'Consents, 0 pending' }),
+    ).toBeNull();
   });
 
   it('caps large pending badges visually while preserving the real accessible count', async () => {
@@ -321,7 +439,9 @@ describe('CarePageClient overview', () => {
       }),
     });
 
-    expect(await screen.findByRole('link', { name: 'Forms, 125 pending' })).toBeTruthy();
+    expect(
+      await screen.findByRole('link', { name: 'Forms, 125 pending' }),
+    ).toBeTruthy();
     expect(screen.getByText('99+')).toBeTruthy();
   });
 
@@ -381,14 +501,23 @@ describe('CarePageClient overview', () => {
     fireEvent.click(card);
 
     await waitFor(() => {
-      expect(router.push).toHaveBeenCalledWith('/care?view=appointments&resourceId=apt-2');
+      expect(router.push).toHaveBeenCalledWith(
+        '/care?view=appointments&resourceId=apt-2',
+      );
     });
   });
 
   it('shows recent documents only when present and opens the Documents tab', async () => {
     renderCarePage({
       overview: {
-        recentDocuments: [{ id: 'doc-1', title: 'Lab results', documentDate: '2026-07-20', category: 'PDF' }],
+        recentDocuments: [
+          {
+            id: 'doc-1',
+            title: 'Lab results',
+            documentDate: '2026-07-20',
+            category: 'PDF',
+          },
+        ],
       },
     });
 
@@ -403,9 +532,22 @@ describe('CarePageClient overview', () => {
   });
 
   it('groups appointments and selects the nearest upcoming appointment by default', async () => {
-    const near = appointment({ id: 'near', startAt: '2099-07-28T10:35:00', service: { id: 'srv-1', name: 'Near visit' } });
-    const later = appointment({ id: 'later', startAt: '2099-08-02T10:35:00', service: { id: 'srv-1', name: 'Later visit' } });
-    const past = appointment({ id: 'past', startAt: '2001-07-28T10:35:00', service: { id: 'srv-1', name: 'Past visit' }, status: 'COMPLETED' });
+    const near = appointment({
+      id: 'near',
+      startAt: '2099-07-28T10:35:00',
+      service: { id: 'srv-1', name: 'Near visit' },
+    });
+    const later = appointment({
+      id: 'later',
+      startAt: '2099-08-02T10:35:00',
+      service: { id: 'srv-1', name: 'Later visit' },
+    });
+    const past = appointment({
+      id: 'past',
+      startAt: '2001-07-28T10:35:00',
+      service: { id: 'srv-1', name: 'Past visit' },
+      status: 'COMPLETED',
+    });
     const extraResponses = new Map<string, unknown>([
       ['/care/appointments', [later, past, near]],
       ['/care/appointments/near', near],
@@ -413,22 +555,48 @@ describe('CarePageClient overview', () => {
 
     renderCarePage({ initialView: 'appointments', extraResponses });
 
-    expect(await screen.findByRole('heading', { name: 'Appointments' })).toBeTruthy();
+    expect(
+      await screen.findByRole('heading', { name: 'Appointments' }),
+    ).toBeTruthy();
     expect(screen.getByRole('heading', { name: 'Upcoming' })).toBeTruthy();
     expect(screen.getByRole('heading', { name: 'Past' })).toBeTruthy();
     expect(
-      Boolean(screen.getByRole('button', { name: /Near visit/i }).compareDocumentPosition(screen.getByRole('button', { name: /Later visit/i })) & Node.DOCUMENT_POSITION_FOLLOWING),
+      Boolean(
+        screen
+          .getByRole('button', { name: /Near visit/i })
+          .compareDocumentPosition(
+            screen.getByRole('button', { name: /Later visit/i }),
+          ) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ),
     ).toBe(true);
 
-    expect(router.replace).not.toHaveBeenCalledWith('/care?view=appointments&resourceId=near');
-    expect(await screen.findByRole('heading', { name: 'Near visit' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: /Near visit/i }).getAttribute('aria-current')).toBe('true');
+    expect(router.replace).not.toHaveBeenCalledWith(
+      '/care?view=appointments&resourceId=near',
+    );
+    expect(
+      await screen.findByRole('heading', { name: 'Near visit' }),
+    ).toBeTruthy();
+    expect(
+      screen
+        .getByRole('button', { name: /Near visit/i })
+        .getAttribute('aria-current'),
+    ).toBe('true');
     expect(screen.queryByText('Appointment details')).toBeNull();
   });
 
   it('selects the most recent past appointment when there are no upcoming appointments', async () => {
-    const older = appointment({ id: 'older', startAt: '2001-01-10T10:00:00', service: { id: 'srv-1', name: 'Older visit' }, status: 'COMPLETED' });
-    const recent = appointment({ id: 'recent', startAt: '2001-02-10T10:00:00', service: { id: 'srv-1', name: 'Recent visit' }, status: 'COMPLETED' });
+    const older = appointment({
+      id: 'older',
+      startAt: '2001-01-10T10:00:00',
+      service: { id: 'srv-1', name: 'Older visit' },
+      status: 'COMPLETED',
+    });
+    const recent = appointment({
+      id: 'recent',
+      startAt: '2001-02-10T10:00:00',
+      service: { id: 'srv-1', name: 'Recent visit' },
+      status: 'COMPLETED',
+    });
     const extraResponses = new Map<string, unknown>([
       ['/care/appointments', [older, recent]],
       ['/care/appointments/recent', recent],
@@ -436,41 +604,73 @@ describe('CarePageClient overview', () => {
 
     renderCarePage({ initialView: 'appointments', extraResponses });
 
-    expect(router.replace).not.toHaveBeenCalledWith('/care?view=appointments&resourceId=recent');
-    expect(await screen.findByRole('heading', { name: 'Recent visit' })).toBeTruthy();
+    expect(router.replace).not.toHaveBeenCalledWith(
+      '/care?view=appointments&resourceId=recent',
+    );
+    expect(
+      await screen.findByRole('heading', { name: 'Recent visit' }),
+    ).toBeTruthy();
     expect(screen.queryByRole('heading', { name: 'Upcoming' })).toBeNull();
     expect(
-      Boolean(screen.getByRole('button', { name: /Recent visit/i }).compareDocumentPosition(screen.getByRole('button', { name: /Older visit/i })) & Node.DOCUMENT_POSITION_FOLLOWING),
+      Boolean(
+        screen
+          .getByRole('button', { name: /Recent visit/i })
+          .compareDocumentPosition(
+            screen.getByRole('button', { name: /Older visit/i }),
+          ) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ),
     ).toBe(true);
   });
 
   it('preserves an explicit selected appointment and hides empty group headings', async () => {
-    const selected = appointment({ id: 'selected', startAt: '2001-07-28T10:35:00', service: { id: 'srv-1', name: 'Selected past visit' }, status: 'COMPLETED' });
+    const selected = appointment({
+      id: 'selected',
+      startAt: '2001-07-28T10:35:00',
+      service: { id: 'srv-1', name: 'Selected past visit' },
+      status: 'COMPLETED',
+    });
     const extraResponses = new Map<string, unknown>([
       ['/care/appointments', [selected]],
       ['/care/appointments/selected', selected],
     ]);
 
-    renderCarePage({ initialView: 'appointments', initialResourceId: 'selected', extraResponses });
+    renderCarePage({
+      initialView: 'appointments',
+      initialResourceId: 'selected',
+      extraResponses,
+    });
 
-    expect(await screen.findByRole('heading', { name: 'Selected past visit' })).toBeTruthy();
-    expect(router.replace).not.toHaveBeenCalledWith('/care?view=appointments&resourceId=selected');
+    expect(
+      await screen.findByRole('heading', { name: 'Selected past visit' }),
+    ).toBeTruthy();
+    expect(router.replace).not.toHaveBeenCalledWith(
+      '/care?view=appointments&resourceId=selected',
+    );
     expect(screen.queryByRole('heading', { name: 'Upcoming' })).toBeNull();
   });
 
   it('falls back safely when the selected appointment is not accessible', async () => {
-    const fallback = appointment({ id: 'fallback', service: { id: 'srv-1', name: 'Fallback visit' } });
+    const fallback = appointment({
+      id: 'fallback',
+      service: { id: 'srv-1', name: 'Fallback visit' },
+    });
     const extraResponses = new Map<string, unknown>([
       ['/care/appointments', [fallback]],
       ['/care/appointments/fallback', fallback],
     ]);
 
-    renderCarePage({ initialView: 'appointments', initialResourceId: 'missing', extraResponses });
+    renderCarePage({
+      initialView: 'appointments',
+      initialResourceId: 'missing',
+      extraResponses,
+    });
 
     await waitFor(() => {
       expect(router.replace).toHaveBeenCalledWith('/care?view=appointments');
     });
-    expect(await screen.findByRole('heading', { name: 'Fallback visit' })).toBeTruthy();
+    expect(
+      await screen.findByRole('heading', { name: 'Fallback visit' }),
+    ).toBeTruthy();
   });
 
   it('keeps the list first on mobile when no appointment is explicitly selected', async () => {
@@ -482,10 +682,18 @@ describe('CarePageClient overview', () => {
 
     renderCarePage({ initialView: 'appointments', extraResponses });
 
-    expect(await screen.findByRole('button', { name: /Controle/i })).toBeTruthy();
-    expect(screen.queryByText('Choose an appointment from the list to view its details.')).toBeNull();
+    expect(
+      await screen.findByRole('button', { name: /Controle/i }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByText(
+        'Choose an appointment from the list to view its details.',
+      ),
+    ).toBeNull();
     expect(screen.queryByRole('heading', { name: 'Controle' })).toBeNull();
-    expect(router.replace).not.toHaveBeenCalledWith('/care?view=appointments&resourceId=apt-1');
+    expect(router.replace).not.toHaveBeenCalledWith(
+      '/care?view=appointments&resourceId=apt-1',
+    );
   });
 
   it('opens appointment details as a single mobile view with push navigation', async () => {
@@ -501,12 +709,20 @@ describe('CarePageClient overview', () => {
     fireEvent.click(await screen.findByRole('button', { name: /Controle/i }));
 
     await waitFor(() => {
-      expect(router.push).toHaveBeenCalledWith('/care?view=appointments&resourceId=apt-1');
+      expect(router.push).toHaveBeenCalledWith(
+        '/care?view=appointments&resourceId=apt-1',
+      );
     });
-    expect(await screen.findByRole('heading', { name: 'Controle' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Back to appointments' })).toBeTruthy();
+    expect(
+      await screen.findByRole('heading', { name: 'Controle' }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: 'Back to appointments' }),
+    ).toBeTruthy();
     expect(screen.queryByRole('heading', { name: 'Upcoming' })).toBeNull();
-    expect(screen.queryByRole('button', { name: /Tuesday, Jul 28/i })).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: /Tuesday, Jul 28/i }),
+    ).toBeNull();
   });
 
   it('uses mobile back action to return to the list without leaving the Care Page', async () => {
@@ -520,14 +736,20 @@ describe('CarePageClient overview', () => {
     renderCarePage({ initialView: 'appointments', extraResponses });
 
     fireEvent.click(await screen.findByRole('button', { name: /Controle/i }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Back to appointments' }));
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Back to appointments' }),
+    );
 
     await waitFor(() => {
       expect(router.back).toHaveBeenCalled();
     });
-    expect(await screen.findByRole('heading', { name: 'Appointments' })).toBeTruthy();
+    expect(
+      await screen.findByRole('heading', { name: 'Appointments' }),
+    ).toBeTruthy();
     expect(screen.getByRole('heading', { name: 'Upcoming' })).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'Back to appointments' })).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: 'Back to appointments' }),
+    ).toBeNull();
   });
 
   it('keeps mobile appointment details synchronized with browser back and forward', async () => {
@@ -541,7 +763,9 @@ describe('CarePageClient overview', () => {
     renderCarePage({ initialView: 'appointments', extraResponses });
 
     fireEvent.click(await screen.findByRole('button', { name: /Controle/i }));
-    expect(await screen.findByRole('button', { name: 'Back to appointments' })).toBeTruthy();
+    expect(
+      await screen.findByRole('button', { name: 'Back to appointments' }),
+    ).toBeTruthy();
 
     window.history.back();
 
@@ -549,14 +773,18 @@ describe('CarePageClient overview', () => {
       expect(window.location.href).toContain('/care?view=appointments');
       expect(window.location.href).not.toContain('resourceId=apt-1');
     });
-    expect(await screen.findByRole('heading', { name: 'Upcoming' })).toBeTruthy();
+    expect(
+      await screen.findByRole('heading', { name: 'Upcoming' }),
+    ).toBeTruthy();
 
     window.history.forward();
 
     await waitFor(() => {
       expect(window.location.href).toContain('resourceId=apt-1');
     });
-    expect(await screen.findByRole('button', { name: 'Back to appointments' })).toBeTruthy();
+    expect(
+      await screen.findByRole('button', { name: 'Back to appointments' }),
+    ).toBeTruthy();
   });
 
   it('opens a directly selected mobile appointment route without rendering the list beside it', async () => {
@@ -567,34 +795,55 @@ describe('CarePageClient overview', () => {
       ['/care/appointments/direct', selected],
     ]);
 
-    renderCarePage({ initialView: 'appointments', initialResourceId: 'direct', extraResponses });
+    renderCarePage({
+      initialView: 'appointments',
+      initialResourceId: 'direct',
+      extraResponses,
+    });
 
-    expect(await screen.findByRole('heading', { name: 'Controle' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Back to appointments' })).toBeTruthy();
+    expect(
+      await screen.findByRole('heading', { name: 'Controle' }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: 'Back to appointments' }),
+    ).toBeTruthy();
     expect(screen.queryByRole('heading', { name: 'Upcoming' })).toBeNull();
   });
 
   it('clears an invalid mobile appointment selection back to the list with a generic message', async () => {
     mockCareViewport(true);
-    const fallback = appointment({ id: 'fallback', service: { id: 'srv-1', name: 'Fallback visit' } });
+    const fallback = appointment({
+      id: 'fallback',
+      service: { id: 'srv-1', name: 'Fallback visit' },
+    });
     const extraResponses = new Map<string, unknown>([
       ['/care/appointments', [fallback]],
     ]);
 
-    renderCarePage({ initialView: 'appointments', initialResourceId: 'missing', extraResponses });
+    renderCarePage({
+      initialView: 'appointments',
+      initialResourceId: 'missing',
+      extraResponses,
+    });
 
     await waitFor(() => {
       expect(router.replace).toHaveBeenCalledWith('/care?view=appointments');
     });
-    expect(await screen.findByText('This appointment is no longer available.')).toBeTruthy();
+    expect(
+      await screen.findByText('This appointment is no longer available.'),
+    ).toBeTruthy();
     expect(screen.getByRole('heading', { name: 'Appointments' })).toBeTruthy();
-    expect(screen.queryByRole('heading', { name: 'Fallback visit' })).toBeNull();
+    expect(
+      screen.queryByRole('heading', { name: 'Fallback visit' }),
+    ).toBeNull();
   });
 
   it('shows a neutral no-appointments empty state', async () => {
     const { container } = renderCarePage({ initialView: 'appointments' });
 
-    expect(await screen.findByText('You do not have any appointments yet.')).toBeTruthy();
+    expect(
+      await screen.findByText('You do not have any appointments yet.'),
+    ).toBeTruthy();
     expect(container.querySelector('.care-empty-state')).toBeTruthy();
     expect(screen.queryByRole('heading', { name: 'Upcoming' })).toBeNull();
     expect(screen.queryByRole('heading', { name: 'Past' })).toBeNull();
@@ -607,9 +856,15 @@ describe('CarePageClient overview', () => {
       ['/care/appointments/apt-1', selected],
     ]);
 
-    renderCarePage({ initialView: 'appointments', initialResourceId: 'apt-1', extraResponses });
+    renderCarePage({
+      initialView: 'appointments',
+      initialResourceId: 'apt-1',
+      extraResponses,
+    });
 
-    expect(await screen.findByRole('heading', { name: 'Controle' })).toBeTruthy();
+    expect(
+      await screen.findByRole('heading', { name: 'Controle' }),
+    ).toBeTruthy();
     expect(screen.getByText('Practitioner')).toBeTruthy();
     expect(screen.getByText('Foulen El Foulani')).toBeTruthy();
     expect(screen.getByText('Location')).toBeTruthy();
@@ -623,16 +878,27 @@ describe('CarePageClient overview', () => {
 
   it('shows a compact contextual cancellation dialog before cancelling', async () => {
     const selected = appointment({ id: 'cancel-me' });
-    const cancelled = appointment({ id: 'cancel-me', status: 'CANCELLED', cancellationAllowed: false, rescheduleAllowed: false });
+    const cancelled = appointment({
+      id: 'cancel-me',
+      status: 'CANCELLED',
+      cancellationAllowed: false,
+      rescheduleAllowed: false,
+    });
     const extraResponses = new Map<string, unknown>([
       ['/care/appointments', [selected]],
       ['/care/appointments/cancel-me', selected],
       ['/care/appointments/cancel-me/cancel', cancelled],
     ]);
 
-    renderCarePage({ initialView: 'appointments', initialResourceId: 'cancel-me', extraResponses });
+    renderCarePage({
+      initialView: 'appointments',
+      initialResourceId: 'cancel-me',
+      extraResponses,
+    });
 
-    const cancel = await screen.findByRole('button', { name: 'Cancel appointment' });
+    const cancel = await screen.findByRole('button', {
+      name: 'Cancel appointment',
+    });
     expect(cancel.className).toContain('secondary');
     expect(cancel.className).toContain('danger-action');
 
@@ -641,9 +907,15 @@ describe('CarePageClient overview', () => {
     const dialog = screen.getByRole('dialog', { name: 'Cancel appointment?' });
     const dialogView = within(dialog);
     expect(dialog).toBeTruthy();
-    expect(dialog.getAttribute('aria-describedby')).toBe('care-cancel-dialog-description');
-    expect(dialogView.getByText('Are you sure you want to cancel this appointment?')).toBeTruthy();
-    expect(dialogView.getByText('The clinic will be notified of the cancellation.')).toBeTruthy();
+    expect(dialog.getAttribute('aria-describedby')).toBe(
+      'care-cancel-dialog-description',
+    );
+    expect(
+      dialogView.getByText('Are you sure you want to cancel this appointment?'),
+    ).toBeTruthy();
+    expect(
+      dialogView.getByText('The clinic will be notified of the cancellation.'),
+    ).toBeTruthy();
     expect(dialogView.queryByText('Controle')).toBeNull();
     expect(dialogView.queryByText(/Tuesday, Jul 28 - 10:35 AM/)).toBeNull();
     expect(dialogView.queryByText('With Foulen El Foulani')).toBeNull();
@@ -651,24 +923,45 @@ describe('CarePageClient overview', () => {
     expect(dialogView.queryByText('cancel-me')).toBeNull();
     expect(dialogView.queryByText('SCHEDULED')).toBeNull();
     const keep = dialogView.getByRole('button', { name: 'Keep appointment' });
-    const confirm = dialogView.getByRole('button', { name: 'Cancel appointment' });
+    const confirm = dialogView.getByRole('button', {
+      name: 'Cancel appointment',
+    });
     expect(keep.className).toContain('secondary');
     expect(confirm.className).toContain('danger-confirm-action');
-    expect(mockCorePublic).not.toHaveBeenCalledWith('/care/appointments/cancel-me/cancel', { method: 'POST' });
+    expect(mockCorePublic).not.toHaveBeenCalledWith(
+      '/care/appointments/cancel-me/cancel',
+      { method: 'POST' },
+    );
 
     fireEvent.click(keep);
-    expect(screen.queryByRole('dialog', { name: 'Cancel appointment?' })).toBeNull();
-    expect(mockCorePublic).not.toHaveBeenCalledWith('/care/appointments/cancel-me/cancel', { method: 'POST' });
+    expect(
+      screen.queryByRole('dialog', { name: 'Cancel appointment?' }),
+    ).toBeNull();
+    expect(mockCorePublic).not.toHaveBeenCalledWith(
+      '/care/appointments/cancel-me/cancel',
+      { method: 'POST' },
+    );
 
     fireEvent.click(screen.getByRole('button', { name: 'Cancel appointment' }));
-    fireEvent.click(screen.getAllByRole('button', { name: 'Cancel appointment' }).at(-1)!);
+    fireEvent.click(
+      screen.getAllByRole('button', { name: 'Cancel appointment' }).at(-1)!,
+    );
 
     await waitFor(() => {
-      expect(mockCorePublic).toHaveBeenCalledWith('/care/appointments/cancel-me/cancel', { method: 'POST' });
+      expect(mockCorePublic).toHaveBeenCalledWith(
+        '/care/appointments/cancel-me/cancel',
+        { method: 'POST' },
+      );
     });
-    expect(await screen.findByText('Your appointment has been cancelled.')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Dismiss appointment message' }));
-    expect(screen.queryByText('Your appointment has been cancelled.')).toBeNull();
+    expect(
+      await screen.findByText('Your appointment has been cancelled.'),
+    ).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Dismiss appointment message' }),
+    );
+    expect(
+      screen.queryByText('Your appointment has been cancelled.'),
+    ).toBeNull();
   });
 
   it('keeps the cancellation dialog open with a friendly error when cancellation fails', async () => {
@@ -676,33 +969,64 @@ describe('CarePageClient overview', () => {
     mockCorePublic.mockImplementation((path: string) => {
       if (path === '/care/bootstrap') return Promise.resolve(bootstrap());
       if (path === '/care/appointments') return Promise.resolve([selected]);
-      if (path === '/care/appointments/cancel-fails') return Promise.resolve(selected);
-      if (path === '/care/appointments/cancel-fails/cancel') return Promise.reject(new Error('RAW_BACKEND_FAILURE'));
+      if (path === '/care/appointments/cancel-fails')
+        return Promise.resolve(selected);
+      if (path === '/care/appointments/cancel-fails/cancel')
+        return Promise.reject(new Error('RAW_BACKEND_FAILURE'));
       return Promise.resolve({});
     });
-    render(<CarePageClient initialView="appointments" initialResourceId="cancel-fails" />);
+    render(
+      <CarePageClient
+        initialView="appointments"
+        initialResourceId="cancel-fails"
+      />,
+    );
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Cancel appointment' }));
-    fireEvent.click(screen.getAllByRole('button', { name: 'Cancel appointment' }).at(-1)!);
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Cancel appointment' }),
+    );
+    fireEvent.click(
+      screen.getAllByRole('button', { name: 'Cancel appointment' }).at(-1)!,
+    );
 
-    expect(await screen.findByText('We could not cancel the appointment. Please try again.')).toBeTruthy();
-    expect(screen.getByRole('dialog', { name: 'Cancel appointment?' })).toBeTruthy();
+    expect(
+      await screen.findByText(
+        'We could not cancel the appointment. Please try again.',
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole('dialog', { name: 'Cancel appointment?' }),
+    ).toBeTruthy();
     expect(screen.queryByText('RAW_BACKEND_FAILURE')).toBeNull();
   });
 
   it('hides appointment actions when current rules disallow changes', async () => {
-    const selected = appointment({ id: 'locked', cancellationAllowed: false, rescheduleAllowed: false });
+    const selected = appointment({
+      id: 'locked',
+      cancellationAllowed: false,
+      rescheduleAllowed: false,
+    });
     const extraResponses = new Map<string, unknown>([
       ['/care/appointments', [selected]],
       ['/care/appointments/locked', selected],
     ]);
 
-    renderCarePage({ initialView: 'appointments', initialResourceId: 'locked', extraResponses });
+    renderCarePage({
+      initialView: 'appointments',
+      initialResourceId: 'locked',
+      extraResponses,
+    });
 
-    expect(await screen.findByRole('heading', { name: 'Controle' })).toBeTruthy();
+    expect(
+      await screen.findByRole('heading', { name: 'Controle' }),
+    ).toBeTruthy();
     expect(screen.queryByRole('heading', { name: 'Actions' })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Cancel appointment' })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Reschedule appointment' })).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: 'Cancel appointment' }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: 'Reschedule appointment' }),
+    ).toBeNull();
   });
 
   it('uses availability slots for rescheduling instead of a raw datetime input', async () => {
@@ -712,26 +1036,49 @@ describe('CarePageClient overview', () => {
     const newStartAt = `${date}T09:30:00`;
     const moved = appointment({ id: 'move-me', startAt: newStartAt });
     const availabilityPath = `/care/appointments/move-me/availability?from=${date}&to=${weekEnd}`;
-    const slot = { serviceId: 'srv-1', locationId: 'loc-1', employeeId: 'prac-1', employeeName: 'Foulen El Foulani', startAt: newStartAt, endAt: `${date}T10:00:00` };
+    const slot = {
+      serviceId: 'srv-1',
+      locationId: 'loc-1',
+      employeeId: 'prac-1',
+      employeeName: 'Foulen El Foulani',
+      startAt: newStartAt,
+      endAt: `${date}T10:00:00`,
+    };
     const extraResponses = new Map<string, unknown>([
       ['/care/appointments', [selected]],
       ['/care/appointments/move-me', selected],
       [availabilityPath, [slot]],
       ['/care/appointments/move-me/reschedule', moved],
     ]);
-    const { container } = renderCarePage({ initialView: 'appointments', initialResourceId: 'move-me', extraResponses });
+    const { container } = renderCarePage({
+      initialView: 'appointments',
+      initialResourceId: 'move-me',
+      extraResponses,
+    });
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Reschedule appointment' }));
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Reschedule appointment' }),
+    );
 
     await waitFor(() => {
-      expect(router.push).toHaveBeenCalledWith('/care?view=appointments&resourceId=move-me&action=reschedule');
+      expect(router.push).toHaveBeenCalledWith(
+        '/care?view=appointments&resourceId=move-me&action=reschedule',
+      );
     });
     expect(container.querySelector('input[type="datetime-local"]')).toBeNull();
-    expect(screen.getByRole('dialog', { name: 'Reschedule appointment' })).toBeTruthy();
+    expect(
+      screen.getByRole('dialog', { name: 'Reschedule appointment' }),
+    ).toBeTruthy();
     expect(await screen.findByText('Available times')).toBeTruthy();
     expect(screen.queryByText('Current appointment')).toBeNull();
-    expect(screen.getByRole('button', { name: 'Continue' }).hasAttribute('disabled')).toBe(true);
-    expect(container.querySelector('.care-appointment-detail-panel .care-reschedule-flow')).toBeNull();
+    expect(
+      screen.getByRole('button', { name: 'Continue' }).hasAttribute('disabled'),
+    ).toBe(true);
+    expect(
+      container.querySelector(
+        '.care-appointment-detail-panel .care-reschedule-flow',
+      ),
+    ).toBeNull();
     fireEvent.click(await screen.findByRole('button', { name: '9:30 AM' }));
 
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
@@ -739,20 +1086,29 @@ describe('CarePageClient overview', () => {
     expect(await screen.findByText('Selected time')).toBeTruthy();
     expect(screen.getByText('Current time')).toBeTruthy();
     expect(screen.getByText('New time')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Choose another time' })).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: 'Choose another time' }),
+    ).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: 'Confirm reschedule' }));
 
     await waitFor(() => {
-      expect(mockCorePublic).toHaveBeenCalledWith('/care/appointments/move-me/reschedule', {
-        method: 'POST',
-        body: JSON.stringify({ newStartAt, employeeId: 'prac-1' }),
-      });
+      expect(mockCorePublic).toHaveBeenCalledWith(
+        '/care/appointments/move-me/reschedule',
+        {
+          method: 'POST',
+          body: JSON.stringify({ newStartAt, employeeId: 'prac-1' }),
+        },
+      );
     });
     await waitFor(() => {
-      expect(router.replace).toHaveBeenCalledWith('/care?view=appointments&resourceId=move-me');
+      expect(router.replace).toHaveBeenCalledWith(
+        '/care?view=appointments&resourceId=move-me',
+      );
     });
-    expect(await screen.findByText('Your appointment has been rescheduled.')).toBeTruthy();
+    expect(
+      await screen.findByText('Your appointment has been rescheduled.'),
+    ).toBeTruthy();
   });
 
   it('shows a friendly no-availability state while rescheduling', async () => {
@@ -766,11 +1122,19 @@ describe('CarePageClient overview', () => {
       [availabilityPath, []],
     ]);
 
-    renderCarePage({ initialView: 'appointments', initialResourceId: 'no-slots', extraResponses });
+    renderCarePage({
+      initialView: 'appointments',
+      initialResourceId: 'no-slots',
+      extraResponses,
+    });
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Reschedule appointment' }));
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Reschedule appointment' }),
+    );
 
-    expect(await screen.findByText('No available times were found for this date.')).toBeTruthy();
+    expect(
+      await screen.findByText('No available times were found for this date.'),
+    ).toBeTruthy();
   });
 
   it('loads more rescheduling availability as additional date sections', async () => {
@@ -790,21 +1154,39 @@ describe('CarePageClient overview', () => {
     const extraResponses = new Map<string, unknown>([
       ['/care/appointments', [selected]],
       ['/care/appointments/more-slots', selected],
-      [`/care/appointments/more-slots/availability?from=${firstDate}&to=${firstWeekEnd}`, []],
-      [`/care/appointments/more-slots/availability?from=${secondWeekStart}&to=${lastDate}`, [laterSlot]],
+      [
+        `/care/appointments/more-slots/availability?from=${firstDate}&to=${firstWeekEnd}`,
+        [],
+      ],
+      [
+        `/care/appointments/more-slots/availability?from=${secondWeekStart}&to=${lastDate}`,
+        [laterSlot],
+      ],
     ]);
 
-    renderCarePage({ initialView: 'appointments', initialResourceId: 'more-slots', extraResponses });
+    renderCarePage({
+      initialView: 'appointments',
+      initialResourceId: 'more-slots',
+      extraResponses,
+    });
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Reschedule appointment' }));
-    expect(await screen.findByText('No available times were found for this date.')).toBeTruthy();
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Reschedule appointment' }),
+    );
+    expect(
+      await screen.findByText('No available times were found for this date.'),
+    ).toBeTruthy();
     fireEvent.click(await screen.findByRole('button', { name: 'Load more' }));
 
     await waitFor(() => {
-      expect(mockCorePublic).toHaveBeenCalledWith(`/care/appointments/more-slots/availability?from=${secondWeekStart}&to=${lastDate}`);
+      expect(mockCorePublic).toHaveBeenCalledWith(
+        `/care/appointments/more-slots/availability?from=${secondWeekStart}&to=${lastDate}`,
+      );
     });
     expect(await screen.findByText('More availability')).toBeTruthy();
-    expect(await screen.findByRole('button', { name: '11:00 AM' })).toBeTruthy();
+    expect(
+      await screen.findByRole('button', { name: '11:00 AM' }),
+    ).toBeTruthy();
   });
 
   it('restores a desktop rescheduling URL as a dialog and closes back to appointment details', async () => {
@@ -818,15 +1200,26 @@ describe('CarePageClient overview', () => {
       [availabilityPath, []],
     ]);
 
-    renderCarePage({ initialView: 'appointments', initialResourceId: 'deep-link', initialAction: 'reschedule', extraResponses });
+    renderCarePage({
+      initialView: 'appointments',
+      initialResourceId: 'deep-link',
+      initialAction: 'reschedule',
+      extraResponses,
+    });
 
-    expect(await screen.findByRole('dialog', { name: 'Reschedule appointment' })).toBeTruthy();
+    expect(
+      await screen.findByRole('dialog', { name: 'Reschedule appointment' }),
+    ).toBeTruthy();
     expect(screen.getByRole('heading', { name: 'Controle' })).toBeTruthy();
 
-    fireEvent.click(screen.getAllByRole('button', { name: 'Keep current appointment' })[0]);
+    fireEvent.click(
+      screen.getAllByRole('button', { name: 'Keep current appointment' })[0],
+    );
 
     await waitFor(() => {
-      expect(router.replace).toHaveBeenCalledWith('/care?view=appointments&resourceId=deep-link');
+      expect(router.replace).toHaveBeenCalledWith(
+        '/care?view=appointments&resourceId=deep-link',
+      );
     });
   });
 
@@ -841,15 +1234,25 @@ describe('CarePageClient overview', () => {
       [availabilityPath, []],
     ]);
 
-    renderCarePage({ initialView: 'appointments', initialResourceId: 'history-reschedule', extraResponses });
+    renderCarePage({
+      initialView: 'appointments',
+      initialResourceId: 'history-reschedule',
+      extraResponses,
+    });
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Reschedule appointment' }));
-    expect(await screen.findByRole('dialog', { name: 'Reschedule appointment' })).toBeTruthy();
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Reschedule appointment' }),
+    );
+    expect(
+      await screen.findByRole('dialog', { name: 'Reschedule appointment' }),
+    ).toBeTruthy();
 
     window.history.back();
 
     await waitFor(() => {
-      expect(window.location.href).toContain('/care?view=appointments&resourceId=history-reschedule');
+      expect(window.location.href).toContain(
+        '/care?view=appointments&resourceId=history-reschedule',
+      );
       expect(window.location.href).not.toContain('action=reschedule');
     });
     expect(screen.queryByRole('dialog')).toBeNull();
@@ -860,7 +1263,9 @@ describe('CarePageClient overview', () => {
     await waitFor(() => {
       expect(window.location.href).toContain('action=reschedule');
     });
-    expect(await screen.findByRole('dialog', { name: 'Reschedule appointment' })).toBeTruthy();
+    expect(
+      await screen.findByRole('dialog', { name: 'Reschedule appointment' }),
+    ).toBeTruthy();
   });
 
   it('opens mobile rescheduling as a page-like view without list or detail underneath', async () => {
@@ -875,18 +1280,33 @@ describe('CarePageClient overview', () => {
       [availabilityPath, []],
     ]);
 
-    renderCarePage({ initialView: 'appointments', initialResourceId: 'mobile-reschedule', initialAction: 'reschedule', extraResponses });
+    renderCarePage({
+      initialView: 'appointments',
+      initialResourceId: 'mobile-reschedule',
+      initialAction: 'reschedule',
+      extraResponses,
+    });
 
-    expect(await screen.findByRole('button', { name: 'Back to appointment details' })).toBeTruthy();
-    expect(screen.getByRole('heading', { name: 'Reschedule appointment' })).toBeTruthy();
+    expect(
+      await screen.findByRole('button', {
+        name: 'Back to appointment details',
+      }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole('heading', { name: 'Reschedule appointment' }),
+    ).toBeTruthy();
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(screen.queryByRole('heading', { name: 'Upcoming' })).toBeNull();
     expect(screen.queryByRole('heading', { name: 'Actions' })).toBeNull();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Back to appointment details' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Back to appointment details' }),
+    );
 
     await waitFor(() => {
-      expect(router.replace).toHaveBeenCalledWith('/care?view=appointments&resourceId=mobile-reschedule');
+      expect(router.replace).toHaveBeenCalledWith(
+        '/care?view=appointments&resourceId=mobile-reschedule',
+      );
     });
   });
 
@@ -905,19 +1325,28 @@ describe('CarePageClient overview', () => {
     });
 
     await waitFor(() => {
-      expect(router.replace).toHaveBeenCalledWith('/care?view=appointments&resourceId=bad-action');
+      expect(router.replace).toHaveBeenCalledWith(
+        '/care?view=appointments&resourceId=bad-action',
+      );
     });
-    expect(await screen.findByRole('heading', { name: 'Controle' })).toBeTruthy();
+    expect(
+      await screen.findByRole('heading', { name: 'Controle' }),
+    ).toBeTruthy();
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 
   it('keeps Care Page navigation horizontally scrollable on narrow screens', () => {
-    const css = readFileSync(path.resolve(process.cwd(), 'app/globals.css'), 'utf8');
+    const css = readFileSync(
+      path.resolve(process.cwd(), 'app/globals.css'),
+      'utf8',
+    );
 
     expect(css).toMatch(/\.care-nav\s*{[\s\S]*?overflow-x:\s*auto/);
     expect(css).toMatch(/\.care-nav\s*{[\s\S]*?overflow-y:\s*hidden/);
     expect(css).toMatch(/\.care-nav\s*{[\s\S]*?flex-wrap:\s*nowrap/);
-    expect(css).toMatch(/\.care-nav\s*{[\s\S]*?scroll-snap-type:\s*x proximity/);
+    expect(css).toMatch(
+      /\.care-nav\s*{[\s\S]*?scroll-snap-type:\s*x proximity/,
+    );
     expect(css).toMatch(/\.care-shell\s*{[\s\S]*?max-width:\s*100vw/);
     expect(css).toMatch(/\.care-shell\s*{[\s\S]*?overflow-x:\s*clip/);
     expect(css).toMatch(/\.care-panel\s*{[\s\S]*?min-width:\s*0/);
@@ -925,11 +1354,53 @@ describe('CarePageClient overview', () => {
     expect(css).toMatch(/\.care-nav\s*{[\s\S]*?width:\s*100%/);
     expect(css).toMatch(/\.care-nav\s*{[\s\S]*?max-width:\s*100%/);
     expect(css).toMatch(/\.care-nav a\s*{[\s\S]*?scroll-snap-align:\s*start/);
-    expect(css).toMatch(/@media\s*\(max-width:\s*640px\)[\s\S]*\.shell\.care-shell\s*{[^}]*padding:/);
-    expect(css).toMatch(/@media\s*\(max-width:\s*640px\)[\s\S]*\.care-nav-shell\s*{[^}]*position:\s*sticky/);
-    expect(css).toMatch(/@media\s*\(max-width:\s*640px\)[\s\S]*\.care-nav\s*{[^}]*padding:\s*8px 16px/);
-    expect(css).toMatch(/@media\s*\(max-width:\s*640px\)[\s\S]*\.care-nav\s*{[^}]*scroll-padding-inline:\s*16px/);
-    expect(css).toMatch(/@media\s*\(max-width:\s*640px\)[\s\S]*\.care-nav a\s*{[^}]*min-height:\s*44px/);
+    expect(css).toMatch(
+      /@media\s*\(max-width:\s*640px\)[\s\S]*\.shell\.care-shell\s*{[^}]*padding:/,
+    );
+    expect(css).toMatch(
+      /@media\s*\(max-width:\s*640px\)[\s\S]*\.care-nav-shell\s*{[^}]*position:\s*sticky/,
+    );
+    expect(css).toMatch(
+      /@media\s*\(max-width:\s*640px\)[\s\S]*\.care-nav\s*{[^}]*padding:\s*8px 16px/,
+    );
+    expect(css).toMatch(
+      /@media\s*\(max-width:\s*640px\)[\s\S]*\.care-nav\s*{[^}]*scroll-padding-inline:\s*16px/,
+    );
+    expect(css).toMatch(
+      /@media\s*\(max-width:\s*640px\)[\s\S]*\.care-nav a\s*{[^}]*min-height:\s*44px/,
+    );
+    expect(css).toMatch(
+      /\.care-form-flow \.checkbox-line > input\[type="radio"\]\s*{[\s\S]*?width:\s*18px/,
+    );
+    expect(css).toMatch(
+      /\.care-form-flow \.checkbox-line > input\[type="checkbox"\][\s\S]*?\.care-form-flow \.checkbox-line > input\[type="radio"\]\s*{[\s\S]*?width:\s*18px/,
+    );
+    expect(css).toMatch(
+      /\.care-form-flow \.checkbox-line\s*{[\s\S]*?align-items:\s*center/,
+    );
+    expect(css).toMatch(/\.care-form-columns\s*{[\s\S]*?align-items:\s*start/);
+    expect(css).toMatch(
+      /\.care-form-columns > \.document-field\s*{[\s\S]*?align-self:\s*start/,
+    );
+    expect(css).toMatch(
+      /\.care-choice-field > \.choice-stack\s*{[\s\S]*?gap:\s*6px/,
+    );
+    expect(css).toMatch(
+      /\.document-field > \.field-label\s*{[\s\S]*?font-size:\s*13px/,
+    );
+    expect(css).toMatch(
+      /\.document-field > \.field-label\s*{[\s\S]*?line-height:\s*1\.35/,
+    );
+    expect(css).toMatch(
+      /\.document-field > \.field-description\s*{[\s\S]*?font-size:\s*13px/,
+    );
+    expect(css).toMatch(
+      /\.document-field > \.field-description\s*{[\s\S]*?line-height:\s*1\.35/,
+    );
+    expect(css).toMatch(
+      /\.care-choice-field > \.choice-stack\s*{[\s\S]*?margin-top:\s*0/,
+    );
+    expect(css).not.toMatch(/\.care-choice-field > legend/);
   });
 
   it('marks the active route with active state and aria-current', async () => {
@@ -941,29 +1412,81 @@ describe('CarePageClient overview', () => {
   });
 
   it('calculates overflow fades with scroll thresholds', () => {
-    expect(careNavScrollAvailability({ scrollLeft: 0, clientWidth: 320, scrollWidth: 700 })).toEqual({
+    expect(
+      careNavScrollAvailability({
+        scrollLeft: 0,
+        clientWidth: 320,
+        scrollWidth: 700,
+      }),
+    ).toEqual({
       canScrollLeft: false,
       canScrollRight: true,
     });
-    expect(careNavScrollAvailability({ scrollLeft: 90, clientWidth: 320, scrollWidth: 700 })).toEqual({
+    expect(
+      careNavScrollAvailability({
+        scrollLeft: 90,
+        clientWidth: 320,
+        scrollWidth: 700,
+      }),
+    ).toEqual({
       canScrollLeft: true,
       canScrollRight: true,
     });
-    expect(careNavScrollAvailability({ scrollLeft: 380, clientWidth: 320, scrollWidth: 700 })).toEqual({
+    expect(
+      careNavScrollAvailability({
+        scrollLeft: 380,
+        clientWidth: 320,
+        scrollWidth: 700,
+      }),
+    ).toEqual({
       canScrollLeft: true,
       canScrollRight: false,
     });
-    expect(careNavScrollAvailability({ scrollLeft: 0, clientWidth: 700, scrollWidth: 700 })).toEqual({
+    expect(
+      careNavScrollAvailability({
+        scrollLeft: 0,
+        clientWidth: 700,
+        scrollWidth: 700,
+      }),
+    ).toEqual({
       canScrollLeft: false,
       canScrollRight: false,
     });
   });
 
   it('calculates active-tab centering without vertical page scrolling', () => {
-    expect(careNavRevealScrollLeft({ left: 0, right: 320 }, { left: 370, right: 470 }, 0, 420)).toBe(260);
-    expect(careNavRevealScrollLeft({ left: 0, right: 320 }, { left: -30, right: 70 }, 160, 420)).toBe(20);
-    expect(careNavRevealScrollLeft({ left: 0, right: 320 }, { left: 30, right: 180 }, 100, 420)).toBe(45);
-    expect(careNavRevealScrollLeft({ left: 0, right: 320 }, { left: 30, right: 180 }, 0, 0)).toBe(0);
+    expect(
+      careNavRevealScrollLeft(
+        { left: 0, right: 320 },
+        { left: 370, right: 470 },
+        0,
+        420,
+      ),
+    ).toBe(260);
+    expect(
+      careNavRevealScrollLeft(
+        { left: 0, right: 320 },
+        { left: -30, right: 70 },
+        160,
+        420,
+      ),
+    ).toBe(20);
+    expect(
+      careNavRevealScrollLeft(
+        { left: 0, right: 320 },
+        { left: 30, right: 180 },
+        100,
+        420,
+      ),
+    ).toBe(45);
+    expect(
+      careNavRevealScrollLeft(
+        { left: 0, right: 320 },
+        { left: 30, right: 180 },
+        0,
+        0,
+      ),
+    ).toBe(0);
   });
 
   it('uses reduced-motion safe scroll behavior', () => {
@@ -975,7 +1498,9 @@ describe('CarePageClient overview', () => {
     const layout = mockCareNavLayout();
     try {
       renderCarePage();
-      const nav = await screen.findByRole('navigation', { name: 'Care page sections' });
+      const nav = await screen.findByRole('navigation', {
+        name: 'Care page sections',
+      });
 
       await waitFor(() => {
         expect(screen.queryByTestId('care-nav-left-fade')).toBeNull();
@@ -1016,10 +1541,19 @@ describe('CarePageClient overview', () => {
       renderCarePage({ initialView: 'documents' });
 
       await waitFor(() => {
-        expect(layout.scrollToSpy).toHaveBeenCalledWith(expect.objectContaining({ behavior: 'smooth' }));
+        expect(layout.scrollToSpy).toHaveBeenCalledWith(
+          expect.objectContaining({ behavior: 'smooth' }),
+        );
       });
-      expect((layout.scrollToSpy.mock.calls.at(-1)?.[0] as ScrollToOptions | undefined)?.left).toBe(380);
-      expect(await screen.findByRole('link', { name: 'Documents' })).toBeTruthy();
+      expect(
+        (
+          layout.scrollToSpy.mock.calls.at(-1)?.[0] as
+            ScrollToOptions | undefined
+        )?.left,
+      ).toBe(380);
+      expect(
+        await screen.findByRole('link', { name: 'Documents' }),
+      ).toBeTruthy();
 
       layout.scrollToSpy.mockClear();
       layout.setScrollLeft(0);
@@ -1028,9 +1562,16 @@ describe('CarePageClient overview', () => {
 
       await waitFor(() => {
         expect(router.replace).toHaveBeenCalledWith('/care?view=documents');
-        expect(layout.scrollToSpy).toHaveBeenCalledWith(expect.objectContaining({ behavior: 'smooth' }));
+        expect(layout.scrollToSpy).toHaveBeenCalledWith(
+          expect.objectContaining({ behavior: 'smooth' }),
+        );
       });
-      expect((layout.scrollToSpy.mock.calls.at(-1)?.[0] as ScrollToOptions | undefined)?.left).toBe(380);
+      expect(
+        (
+          layout.scrollToSpy.mock.calls.at(-1)?.[0] as
+            ScrollToOptions | undefined
+        )?.left,
+      ).toBe(380);
     } finally {
       layout.restore();
     }
@@ -1064,5 +1605,652 @@ describe('CarePageClient overview', () => {
     } finally {
       layout.restore();
     }
+  });
+
+  it('groups Care forms with patient-facing labels and hides empty groups and raw statuses', async () => {
+    renderCarePage({
+      initialView: 'forms',
+      extraResponses: new Map<string, unknown>([
+        [
+          '/care/forms',
+          [
+            {
+              id: 'new-form',
+              templateTitle: 'Patient intake',
+              status: 'SENT',
+              dueAt: '2026-07-30',
+            },
+            {
+              id: 'draft-form',
+              title: 'Medical history',
+              status: 'IN_PROGRESS',
+            },
+            {
+              id: 'done-form',
+              title: 'Consent history',
+              status: 'SUBMITTED',
+              submittedAt: '2026-07-24T10:00:00',
+            },
+            { id: 'expired-form', title: 'Old intake', status: 'EXPIRED' },
+            { id: 'hidden-form', title: 'Internal form', status: 'FAILED' },
+          ],
+        ],
+      ]),
+    });
+
+    expect(
+      await screen.findByRole('heading', { level: 2, name: 'Forms' }),
+    ).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'To complete' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'In progress' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Completed' })).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: /Patient intake/i }).textContent,
+    ).toContain('Complete form');
+    expect(
+      screen.getByRole('button', { name: /Medical history/i }).textContent,
+    ).toContain('Continue form');
+    expect(
+      screen.getByRole('button', { name: /Consent history/i }).textContent,
+    ).toContain('Completed Jul 24');
+    expect(
+      screen.getByRole('button', { name: /Old intake/i }).textContent,
+    ).toContain('Expired');
+    expect(screen.queryByText('Completed or unavailable')).toBeNull();
+    expect(screen.queryByText('No items.')).toBeNull();
+    expect(screen.queryByText('SENT')).toBeNull();
+    expect(screen.queryByText('Item')).toBeNull();
+    expect(screen.queryByText('Internal form')).toBeNull();
+  });
+
+  it('shows a neutral no-forms state', async () => {
+    renderCarePage({ initialView: 'forms' });
+
+    expect(
+      await screen.findByText('You do not have any forms right now.'),
+    ).toBeTruthy();
+    expect(screen.queryByText('No items.')).toBeNull();
+  });
+
+  it('uses specific loading labels for form list and focused form routes', async () => {
+    const pending = new Promise<never>(() => undefined);
+    const { unmount } = renderCarePage({
+      initialView: 'forms',
+      extraResponses: new Map<string, unknown>([['/care/forms', pending]]),
+    });
+
+    expect(await screen.findByText('Loading form list...')).toBeTruthy();
+    expect(screen.queryByText('Loading...')).toBeNull();
+
+    unmount();
+    renderCarePage({
+      initialView: 'forms',
+      initialResourceId: 'form-1',
+      extraResponses: new Map<string, unknown>([['/care/forms', pending]]),
+    });
+
+    expect(await screen.findByText('Loading form...')).toBeTruthy();
+  });
+
+  it('opens an actionable form in a focused URL-driven view and returns to the list', async () => {
+    renderCarePage({
+      initialView: 'forms',
+      extraResponses: new Map<string, unknown>([
+        [
+          '/care/forms',
+          [{ id: 'form-1', title: 'Patient intake', status: 'SENT' }],
+        ],
+        [
+          '/care/forms/form-1',
+          publicForm({
+            schema: {
+              sections: [
+                {
+                  ...publicForm().schema.sections[0],
+                  description: 'Before the appointment',
+                },
+                publicForm().schema.sections[1],
+              ],
+            },
+          }),
+        ],
+      ]),
+    });
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: /Patient intake/i }),
+    );
+
+    await waitFor(() => {
+      expect(router.push).toHaveBeenCalledWith(
+        '/care?view=forms&resourceId=form-1',
+      );
+    });
+    expect(
+      await screen.findByRole('heading', { level: 2, name: 'Patient intake' }),
+    ).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Back to forms' })).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: 'To complete' })).toBeNull();
+    expect(screen.queryByText('Form details')).toBeNull();
+    expect(screen.getByText('1 of 2 sections')).toBeTruthy();
+    const sectionHeading = screen.getByRole('heading', {
+      level: 3,
+      name: 'Section 1',
+    });
+    expect(sectionHeading).toBeTruthy();
+    const sectionDescription = screen.getByText('Before the appointment');
+    expect(sectionDescription.className).toContain(
+      'document-section-description',
+    );
+    expect(sectionDescription.closest('.document-section-heading')).toBe(
+      sectionHeading.closest('.document-section-heading'),
+    );
+    expect(screen.queryByText('Section 1 of 2')).toBeNull();
+    expect(screen.getByLabelText(/Patient informations/)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Back to forms' }));
+
+    await waitFor(() => {
+      expect(router.replace).toHaveBeenCalledWith('/care?view=forms');
+    });
+    expect(
+      await screen.findByRole('heading', { name: 'To complete' }),
+    ).toBeTruthy();
+  });
+
+  it('renders form-template layout nodes and validates fields inside columns', async () => {
+    const { container } = renderCarePage({
+      initialView: 'forms',
+      initialResourceId: 'form-1',
+      extraResponses: new Map<string, unknown>([
+        [
+          '/care/forms',
+          [{ id: 'form-1', title: 'Patient intake', status: 'SENT' }],
+        ],
+        [
+          '/care/forms/form-1',
+          publicForm({
+            schema: {
+              schemaVersion: 2,
+              sections: [
+                {
+                  id: 'section-1',
+                  title: 'Section 1',
+                  fields: [
+                    {
+                      id: 'columns-1',
+                      type: 'COLUMNS',
+                      ratios: [1, 2],
+                      children: [
+                        {
+                          id: 'first-name',
+                          type: 'SHORT_TEXT',
+                          label: 'First name',
+                          required: true,
+                        },
+                        {
+                          id: 'visit-reason',
+                          type: 'DROPDOWN',
+                          label: 'Visit reason',
+                          required: true,
+                          options: [
+                            { id: 'checkup', label: 'Checkup' },
+                            { id: 'follow-up', label: 'Follow up' },
+                          ],
+                        },
+                      ],
+                    },
+                    {
+                      id: 'gender',
+                      type: 'SINGLE_CHOICE',
+                      label: 'Gender',
+                      options: [
+                        { id: 'male', label: 'Male' },
+                        { id: 'female', label: 'Female' },
+                        { id: 'other', label: 'Other', isOther: true },
+                      ],
+                    },
+                    { id: 'details', type: 'LONG_TEXT', label: 'Details' },
+                  ],
+                },
+              ],
+            },
+          }),
+        ],
+      ]),
+    });
+
+    expect(
+      await screen.findByRole('heading', { level: 3, name: 'Section 1' }),
+    ).toBeTruthy();
+    const columns = container.querySelector<HTMLElement>('.care-form-columns');
+    expect(columns).toBeTruthy();
+    expect(
+      columns?.style.getPropertyValue('--care-form-columns-template'),
+    ).toContain('1fr');
+    expect(
+      columns?.style.getPropertyValue('--care-form-columns-template'),
+    ).toContain('2fr');
+    expect(screen.getByLabelText(/First name/)).toBeTruthy();
+    expect(screen.getByLabelText(/Visit reason/)).toBeTruthy();
+    fireEvent.click(screen.getByText('Female'));
+    expect((screen.getByLabelText('Female') as HTMLInputElement).checked).toBe(
+      true,
+    );
+    const otherTextInput = container.querySelector<HTMLInputElement>(
+      '.other-choice-input',
+    );
+    expect(otherTextInput).toBeTruthy();
+    expect(otherTextInput?.tabIndex).toBe(-1);
+    fireEvent.pointerDown(otherTextInput!);
+    otherTextInput!.focus();
+    expect((screen.getByLabelText('Other') as HTMLInputElement).checked).toBe(
+      true,
+    );
+    expect(document.activeElement).toBe(otherTextInput);
+    fireEvent.change(otherTextInput!, { target: { value: 'Nonbinary' } });
+    expect(otherTextInput!.value).toBe('Nonbinary');
+    expect(screen.getByLabelText(/Details/).tagName).toBe('TEXTAREA');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Submit form' }));
+
+    expect(await screen.findAllByText('Required field.')).toHaveLength(2);
+    expect(document.activeElement).toBe(screen.getByLabelText(/First name/));
+
+    fireEvent.change(screen.getByLabelText(/First name/), {
+      target: { value: 'Karim' },
+    });
+    fireEvent.change(screen.getByLabelText(/Visit reason/), {
+      target: { value: 'checkup' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Submit form' }));
+
+    expect(
+      await screen.findByRole('dialog', { name: 'Submit this form?' }),
+    ).toBeTruthy();
+  });
+
+  it('supports free-text Other answers for multiple choice form fields', async () => {
+    const { container } = renderCarePage({
+      initialView: 'forms',
+      initialResourceId: 'form-1',
+      extraResponses: new Map<string, unknown>([
+        [
+          '/care/forms',
+          [{ id: 'form-1', title: 'Patient intake', status: 'SENT' }],
+        ],
+        [
+          '/care/forms/form-1',
+          publicForm({
+            schema: {
+              sections: [
+                {
+                  id: 'section-1',
+                  label: 'Section 1',
+                  fields: [
+                    {
+                      id: 'symptoms',
+                      type: 'MULTIPLE_CHOICE',
+                      label: 'Symptoms',
+                      options: [
+                        { id: 'pain', label: 'Pain' },
+                        { id: 'other', label: 'Other', isOther: true },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          }),
+        ],
+      ]),
+    });
+
+    expect(
+      await screen.findByRole('heading', { level: 2, name: 'Patient intake' }),
+    ).toBeTruthy();
+    expect(screen.getByRole('group', { name: 'Symptoms' }).className).toContain(
+      'care-choice-field',
+    );
+    const painCheckbox = screen.getByLabelText('Pain') as HTMLInputElement;
+    const otherCheckbox = screen.getByLabelText('Other') as HTMLInputElement;
+    expect(painCheckbox.tabIndex).toBe(0);
+    expect(otherCheckbox.tabIndex).toBe(-1);
+    painCheckbox.focus();
+    fireEvent.keyDown(painCheckbox, { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(otherCheckbox);
+    fireEvent.keyDown(otherCheckbox, { key: 'ArrowUp' });
+    expect(document.activeElement).toBe(painCheckbox);
+    fireEvent.click(screen.getByLabelText('Pain'));
+    const otherTextInput = container.querySelector<HTMLInputElement>(
+      '.other-choice-input',
+    );
+    expect(otherTextInput).toBeTruthy();
+    expect(otherTextInput?.tabIndex).toBe(-1);
+    fireEvent.pointerDown(otherTextInput!);
+    otherTextInput!.focus();
+    await waitFor(() => {
+      expect(otherTextInput?.tabIndex).toBe(0);
+    });
+    fireEvent.change(otherTextInput!, { target: { value: 'Head pressure' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save progress' }));
+
+    await waitFor(() => {
+      expect(mockCorePublic).toHaveBeenCalledWith(
+        '/care/forms/form-1',
+        expect.objectContaining({
+          method: 'PATCH',
+          body: JSON.stringify({
+            answers: {
+              symptoms: ['pain', { optionId: 'other', text: 'Head pressure' }],
+            },
+          }),
+        }),
+      );
+    });
+  });
+
+  it('treats No as a completed required Yes/No form answer', async () => {
+    renderCarePage({
+      initialView: 'forms',
+      initialResourceId: 'form-1',
+      extraResponses: new Map<string, unknown>([
+        [
+          '/care/forms',
+          [{ id: 'form-1', title: 'Patient intake', status: 'SENT' }],
+        ],
+        [
+          '/care/forms/form-1',
+          publicForm({
+            schema: {
+              sections: [
+                {
+                  id: 'section-1',
+                  label: 'Section 1',
+                  fields: [
+                    {
+                      id: 'has-allergies',
+                      type: 'BOOLEAN',
+                      label: 'Do you have allergies?',
+                      required: true,
+                    },
+                  ],
+                },
+              ],
+            },
+          }),
+        ],
+      ]),
+    });
+
+    expect(
+      await screen.findByRole('heading', { level: 2, name: 'Patient intake' }),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByLabelText('No'));
+    fireEvent.click(screen.getByRole('button', { name: 'Save progress' }));
+
+    await waitFor(() => {
+      expect(mockCorePublic).toHaveBeenCalledWith(
+        '/care/forms/form-1',
+        expect.objectContaining({
+          method: 'PATCH',
+          body: JSON.stringify({
+            answers: {
+              'has-allergies': false,
+            },
+          }),
+        }),
+      );
+    });
+    expect(screen.queryByText('Required field.')).toBeNull();
+  });
+
+  it('restores an active form route on refresh and safely removes invalid selections', async () => {
+    renderCarePage({
+      initialView: 'forms',
+      initialResourceId: 'form-1',
+      extraResponses: new Map<string, unknown>([
+        [
+          '/care/forms',
+          [{ id: 'form-1', title: 'Patient intake', status: 'SENT' }],
+        ],
+        [
+          '/care/forms/form-1',
+          publicForm({
+            schema: { sections: [publicForm().schema.sections[0]] },
+          }),
+        ],
+      ]),
+    });
+
+    expect(
+      await screen.findByRole('heading', { level: 2, name: 'Patient intake' }),
+    ).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: 'To complete' })).toBeNull();
+
+    renderCarePage({
+      initialView: 'forms',
+      initialResourceId: 'missing',
+      extraResponses: new Map<string, unknown>([
+        [
+          '/care/forms',
+          [{ id: 'form-1', title: 'Patient intake', status: 'SENT' }],
+        ],
+      ]),
+    });
+
+    await waitFor(() => {
+      expect(router.replace).toHaveBeenCalledWith('/care?view=forms');
+    });
+    expect(
+      await screen.findByText('This form is no longer available.'),
+    ).toBeTruthy();
+  });
+
+  it('keeps form actions together and saves progress through the draft API', async () => {
+    let resolveSave: (() => void) | undefined;
+    const pendingSave = new Promise<void>((resolve) => {
+      resolveSave = resolve;
+    });
+    renderCarePage({
+      initialView: 'forms',
+      initialResourceId: 'form-1',
+      extraResponses: new Map<string, unknown>([
+        [
+          '/care/forms',
+          [{ id: 'form-1', title: 'Patient intake', status: 'SENT' }],
+        ],
+        [
+          '/care/forms/form-1',
+          publicForm({
+            schema: { sections: [publicForm().schema.sections[0]] },
+          }),
+        ],
+      ]),
+    });
+
+    expect(
+      await screen.findByRole('heading', { level: 2, name: 'Patient intake' }),
+    ).toBeTruthy();
+    const save = screen.getByRole('button', { name: 'Save progress' });
+    const submit = screen.getByRole('button', { name: 'Submit form' });
+    expect(save.closest('.care-form-action-footer')).toBe(
+      submit.closest('.care-form-action-footer'),
+    );
+    expect(screen.queryByRole('button', { name: /^Back$/ })).toBeNull();
+
+    mockCorePublic.mockImplementation((path: string, options?: RequestInit) => {
+      if (path === '/care/forms/form-1' && options?.method === 'PATCH')
+        return pendingSave;
+      if (path === '/care/bootstrap') return Promise.resolve(bootstrap());
+      if (path === '/care/forms')
+        return Promise.resolve([
+          { id: 'form-1', title: 'Patient intake', status: 'DRAFT' },
+        ]);
+      return Promise.resolve({});
+    });
+
+    fireEvent.change(screen.getByLabelText(/Patient informations/), {
+      target: { value: 'Karim' },
+    });
+    fireEvent.click(save);
+    expect(screen.getByRole('button', { name: 'Saving...' })).toBeTruthy();
+    expect(screen.getByLabelText(/Patient informations/)).toBeTruthy();
+    expect(screen.queryByText('Loading form...')).toBeNull();
+
+    await waitFor(() => {
+      expect(mockCorePublic).toHaveBeenCalledWith(
+        '/care/forms/form-1',
+        expect.objectContaining({ method: 'PATCH' }),
+      );
+    });
+    resolveSave?.();
+    expect(await screen.findByText('Progress saved')).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Dismiss form message' }),
+    );
+    expect(screen.queryByText('Progress saved')).toBeNull();
+    expect(screen.getByLabelText(/Patient informations/)).toBeTruthy();
+  });
+
+  it('validates before opening the submit dialog and submits after confirmation', async () => {
+    renderCarePage({
+      initialView: 'forms',
+      initialResourceId: 'form-1',
+      extraResponses: new Map<string, unknown>([
+        [
+          '/care/forms',
+          [{ id: 'form-1', title: 'Patient intake', status: 'SENT' }],
+        ],
+        [
+          '/care/forms/form-1',
+          publicForm({
+            schema: { sections: [publicForm().schema.sections[0]] },
+          }),
+        ],
+      ]),
+    });
+
+    const field = await screen.findByLabelText(/Patient informations/);
+    fireEvent.click(screen.getByRole('button', { name: 'Submit form' }));
+
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(await screen.findByText('Required field.')).toBeTruthy();
+    expect(document.activeElement).toBe(field);
+
+    fireEvent.change(field, { target: { value: 'Karim' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Submit form' }));
+
+    expect(
+      await screen.findByRole('dialog', { name: 'Submit this form?' }),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Review form' }));
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).toBeNull();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Submit form' }));
+    expect(
+      await screen.findByRole('dialog', { name: 'Submit this form?' }),
+    ).toBeTruthy();
+    fireEvent.click(
+      within(screen.getByRole('dialog')).getByRole('button', {
+        name: 'Submit form',
+      }),
+    );
+
+    await waitFor(() => {
+      expect(mockCorePublic).toHaveBeenCalledWith(
+        '/care/forms/form-1/submit',
+        expect.objectContaining({ method: 'POST' }),
+      );
+      expect(router.replace).toHaveBeenCalledWith('/care?view=forms');
+    });
+    expect(
+      await screen.findByText('Your form has been submitted'),
+    ).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Dismiss form message' }),
+    );
+    expect(screen.queryByText('Your form has been submitted')).toBeNull();
+  });
+
+  it('does not render editable actions for completed forms', async () => {
+    renderCarePage({
+      initialView: 'forms',
+      initialResourceId: 'done-form',
+      extraResponses: new Map<string, unknown>([
+        [
+          '/care/forms',
+          [
+            {
+              id: 'done-form',
+              title: 'Consent history',
+              status: 'SUBMITTED',
+              submittedAt: '2026-07-24T10:00:00',
+            },
+          ],
+        ],
+        [
+          '/care/forms/done-form',
+          publicForm({
+            open: false,
+            status: 'SUBMITTED',
+            title: 'Consent history',
+            schema: {
+              sections: [
+                {
+                  ...publicForm().schema.sections[0],
+                  fields: [
+                    {
+                      id: 'info',
+                      type: 'INFORMATION',
+                      label:
+                        'I confirm that the information provided is accurate to the best of my knowledge.',
+                      content: 'Information text',
+                    },
+                    ...publicForm().schema.sections[0].fields,
+                  ],
+                },
+                publicForm().schema.sections[1],
+              ],
+            },
+            draft: { 'patient-info': 'Draft value' },
+            submission: {
+              answers: {
+                'patient-info': 'Submitted value',
+                notes: 'Submitted note',
+              },
+            },
+          }),
+        ],
+      ]),
+    });
+
+    expect(
+      await screen.findByRole('heading', { level: 2, name: 'Consent history' }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole('heading', { level: 3, name: 'Section 1' }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole('heading', { level: 3, name: 'Medical details' }),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        'I confirm that the information provided is accurate to the best of my knowledge.',
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText('Information text')).toBeNull();
+    expect(
+      (screen.getByLabelText(/Patient informations/) as HTMLInputElement).value,
+    ).toBe('Submitted value');
+    expect((screen.getByLabelText(/Notes/) as HTMLTextAreaElement).value).toBe(
+      'Submitted note',
+    );
+    expect(screen.queryByText('1 of 2 sections')).toBeNull();
+    expect(screen.getByText('Completed')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Save progress' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Submit form' })).toBeNull();
   });
 });
