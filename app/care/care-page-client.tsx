@@ -35,7 +35,6 @@ import type {
   AvailabilitySlotResponseDTO,
   ManagedAppointmentResponseDTO,
   PublicConsentDTO,
-  PublicConsentSignRequestDTOSignerTypeEnum,
   PublicFormDTO,
 } from '@allomed-api/core-service-public-api';
 import { ContentLoader } from '@/components/common/content-loader';
@@ -2053,7 +2052,7 @@ function FormFlow({
         `/care/forms/${encodeURIComponent(assignmentId)}/submit`,
         {
           method: 'POST',
-          body: JSON.stringify({ answers, submittedByType: 'PATIENT' }),
+          body: JSON.stringify({ answers, submitterType: 'PATIENT' }),
         },
       );
       setSubmitDialogOpen(false);
@@ -2600,10 +2599,6 @@ function ConsentFlow({
   onChanged: () => void;
 }) {
   const [consent, setConsent] = useState<PublicConsentDTO | null>(null);
-  const [signerName, setSignerName] = useState('');
-  const [signerType, setSignerType] =
-    useState<PublicConsentSignRequestDTOSignerTypeEnum>('PATIENT');
-  const [relationship, setRelationship] = useState('');
   const [typedSignature, setTypedSignature] = useState('');
   const [acknowledgements, setAcknowledgements] = useState<
     Record<string, boolean>
@@ -2652,7 +2647,7 @@ function ConsentFlow({
       Array<{ id?: string; label?: string }> | undefined) ?? [];
 
   async function sign() {
-    if (!signerName.trim() || !typedSignature.trim() || !finalConfirmation) {
+    if (!typedSignature.trim() || !finalConfirmation) {
       setError('Please complete the signing details.');
       return;
     }
@@ -2672,10 +2667,7 @@ function ConsentFlow({
         {
           method: 'POST',
           body: JSON.stringify({
-            signerType,
-            signerName,
-            relationshipToPatient:
-              signerType === 'PATIENT' ? undefined : relationship,
+            submitterType: 'PATIENT',
             acknowledgements,
             typedSignature,
             finalConfirmation,
@@ -2725,39 +2717,6 @@ function ConsentFlow({
             );
           })}
         </div>
-      ) : null}
-      <label className="document-field">
-        <span>Signer type</span>
-        <select
-          value={signerType}
-          onChange={(event) =>
-            setSignerType(
-              event.target.value as PublicConsentSignRequestDTOSignerTypeEnum,
-            )
-          }
-        >
-          <option value="PATIENT">Patient</option>
-          <option value="PARENT">Parent</option>
-          <option value="GUARDIAN">Guardian</option>
-          <option value="LEGAL_REPRESENTATIVE">Legal representative</option>
-          <option value="OTHER_REPRESENTATIVE">Other representative</option>
-        </select>
-      </label>
-      <label className="document-field">
-        <span>Signer name *</span>
-        <input
-          value={signerName}
-          onChange={(event) => setSignerName(event.target.value)}
-        />
-      </label>
-      {signerType !== 'PATIENT' ? (
-        <label className="document-field">
-          <span>Relationship to patient</span>
-          <input
-            value={relationship}
-            onChange={(event) => setRelationship(event.target.value)}
-          />
-        </label>
       ) : null}
       <label className="document-field">
         <span>Typed signature *</span>

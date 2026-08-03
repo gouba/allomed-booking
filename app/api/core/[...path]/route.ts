@@ -86,13 +86,17 @@ async function proxy(request: NextRequest, target: URL) {
   });
 
   const method = request.method.toUpperCase();
+  const body =
+    method === 'GET' || method === 'HEAD'
+      ? undefined
+      : await requestBody(request, target, method);
   const response = await fetch(target, {
     method,
     headers: {
       ...forwardedHeaders(request),
       ...(method === 'GET' || method === 'HEAD' ? {} : { 'Content-Type': request.headers.get('content-type') ?? 'application/json' }),
     },
-    body: method === 'GET' || method === 'HEAD' ? undefined : await request.text(),
+    body,
     cache: 'no-store',
   });
 
@@ -117,6 +121,49 @@ async function proxy(request: NextRequest, target: URL) {
     status: response.status,
     headers,
   });
+}
+
+async function requestBody(request: NextRequest, target: URL, method: string) {
+  const body = await request.text();
+  if (!shouldAttachCareAuditMetadata(target, method)) {
+    return body;
+  }
+
+  const payload = parseObjectBody(body);
+  if (!payload) {
+    return body;
+  }
+
+  return JSON.stringify({
+    ...payload,
+    ipAddress: clientIpAddress(request) ?? payload.ipAddress,
+    userAgent: request.headers.get('user-agent') ?? payload.userAgent,
+  });
+}
+
+function shouldAttachCareAuditMetadata(target: URL, method: string) {
+  if (method !== 'POST') return false;
+  return (
+    /^\/care\/forms\/[^/]+\/submit$/.test(target.pathname) ||
+    /^\/care\/consents\/[^/]+\/sign$/.test(target.pathname)
+  );
+}
+
+function parseObjectBody(body: string) {
+  try {
+    const payload = body ? JSON.parse(body) : {};
+    return payload && typeof payload === 'object' && !Array.isArray(payload)
+      ? (payload as Record<string, unknown>)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function clientIpAddress(request: NextRequest) {
+  const forwardedFor = request.headers.get('x-forwarded-for');
+  const firstForwardedIp = forwardedFor?.split(',')[0]?.trim();
+  return firstForwardedIp || request.headers.get('x-real-ip') || undefined;
 }
 
 function isChartCarePath(path: string[]) {

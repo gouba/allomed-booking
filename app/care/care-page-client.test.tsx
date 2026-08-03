@@ -1403,6 +1403,15 @@ describe('CarePageClient overview', () => {
     expect(css).not.toMatch(/\.care-choice-field > legend/);
   });
 
+  it('keeps patient-facing consent signatures patient-only', () => {
+    const source = readFileSync(
+      path.resolve(process.cwd(), 'app/care/care-page-client.tsx'),
+      'utf8',
+    );
+
+    expect(source).toMatch(/submitterType:\s*["']PATIENT["']/);
+  });
+
   it('marks the active route with active state and aria-current', async () => {
     renderCarePage({ initialView: 'documents' });
 
