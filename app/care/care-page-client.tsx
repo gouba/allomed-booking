@@ -9,6 +9,7 @@ import {
   useState,
   type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from 'react';
 import {
@@ -81,8 +82,41 @@ type Section = {
   fields: SchemaNode[];
 };
 type ClinicalSchema = { sections: Section[] };
+type ConsentBlockType =
+  | 'COLUMNS'
+  | 'HEADING'
+  | 'PARAGRAPH'
+  | 'RICH_TEXT'
+  | 'DIVIDER'
+  | 'ACKNOWLEDGEMENT'
+  | 'SIGNATURE';
+type ConsentBlock = {
+  id: string;
+  type: ConsentBlockType;
+  label: string;
+  content?: string;
+  required?: boolean;
+  ratios?: number[];
+  children?: ConsentBlock[];
+};
+type ConsentSection = {
+  id: string;
+  title: string;
+  description?: string;
+  blocks: ConsentBlock[];
+};
+type ConsentDocument = { sections: ConsentSection[] };
 type Answers = Record<string, unknown>;
 type FieldErrors = Record<string, string>;
+type SignaturePoint = { x: number; y: number };
+type SignatureStroke = { points: SignaturePoint[] };
+type SignatureDrawingData = { strokes: SignatureStroke[] };
+type SignatureAnswer = {
+  method: 'DRAWN' | 'TYPED';
+  typedName?: string;
+  drawing?: SignatureDrawingData;
+  signedAt?: string;
+};
 const DEFAULT_INFORMATION_TEXT = 'Information text';
 type CareFormListItem = CareFormSummaryDTO & {
   closedReason?: string;
@@ -102,6 +136,16 @@ type PublicFormWithAnswers = PublicFormDTO & {
   submission?: {
     answers?: Answers;
   };
+};
+type ConsentSignatureSnapshot = {
+  signature?: unknown;
+  signatures?: Record<string, unknown>;
+  acknowledgements?: Record<string, unknown>;
+  signedAt?: string;
+  typedSignature?: string;
+};
+type PublicConsentWithSignature = PublicConsentDTO & {
+  signature?: ConsentSignatureSnapshot;
 };
 type PatientFormState =
   | { group: 'toComplete'; labelKey: 'completeForm'; actionable: true }
@@ -144,6 +188,10 @@ const pendingFormStatuses = new Set([
   'IN_PROGRESS',
 ]);
 const pendingConsentStatuses = new Set(['REQUESTED', 'SENT', 'OPENED']);
+const completedConsentStatuses = new Set(['SIGNED', 'REVIEWED']);
+const expiredConsentStatuses = new Set(['EXPIRED']);
+const hiddenConsentStatuses = new Set(['CANCELLED']);
+const withdrawnConsentStatuses = new Set(['WITHDRAWN', 'CANCELLED', 'REVOKED']);
 const formToCompleteStatuses = new Set(['ASSIGNED', 'SENT', 'OPENED']);
 const formInProgressStatuses = new Set(['IN_PROGRESS', 'DRAFT']);
 const formCompletedStatuses = new Set(['SUBMITTED', 'REVIEWED', 'COMPLETED']);
@@ -171,6 +219,7 @@ type CareCopyKey =
   | 'appointmentUnavailable'
   | 'backToAppointments'
   | 'backToAppointmentDetails'
+  | 'backToConsents'
   | 'availableTimes'
   | 'carePageUnavailable'
   | 'carePageSections'
@@ -197,6 +246,8 @@ type CareCopyKey =
   | 'continue'
   | 'continueForm'
   | 'consent'
+  | 'consentNoLongerAvailable'
+  | 'consentSignedSuccess'
   | 'consents'
   | 'contactClinic'
   | 'currentTime'
@@ -221,6 +272,18 @@ type CareCopyKey =
   | 'formSaving'
   | 'formRequiredField'
   | 'formSectionsProgress'
+  | 'signature'
+  | 'signatureDraw'
+  | 'signatureType'
+  | 'signatureClear'
+  | 'signatureCanvasLabel'
+  | 'signatureDrawPlaceholder'
+  | 'signatureFullName'
+  | 'signatureTypedStatement'
+  | 'signaturePreviewLabel'
+  | 'signed'
+  | 'signatureSigned'
+  | 'signatureSignedOnAt'
   | 'expired'
   | 'keepCurrentAppointment'
   | 'loadAppointmentsError'
@@ -239,9 +302,13 @@ type CareCopyKey =
   | 'moreAvailability'
   | 'nextAppointment'
   | 'newTime'
+  | 'needsSignature'
   | 'noAppointments'
   | 'noAvailableTimes'
+  | 'noConsents'
   | 'noForms'
+  | 'noOverviewDescription'
+  | 'noOverviewTitle'
   | 'noLongerAvailable'
   | 'overview'
   | 'overviewError'
@@ -265,6 +332,7 @@ type CareCopyKey =
   | 'seeAllDocuments'
   | 'selectedTime'
   | 'signOut'
+  | 'signedOrUnavailable'
   | 'submitForm'
   | 'saveProgress'
   | 'thingsToComplete'
@@ -294,6 +362,7 @@ const careCopy = {
     appointmentUnavailable: 'This appointment is no longer available.',
     backToAppointments: 'Back to appointments',
     backToAppointmentDetails: 'Back to appointment details',
+    backToConsents: 'Back to consents',
     availableTimes: 'Available times',
     carePageUnavailable: 'Care Page unavailable',
     carePageSections: 'Care page sections',
@@ -325,6 +394,8 @@ const careCopy = {
     continue: 'Continue',
     continueForm: 'Continue form',
     consent: 'Consent',
+    consentNoLongerAvailable: 'This consent is no longer available.',
+    consentSignedSuccess: 'Your consent has been signed',
     consents: 'Consents',
     contactClinic: 'Contact the clinic to request a new secure link.',
     currentTime: 'Current time',
@@ -349,6 +420,19 @@ const careCopy = {
     formSaving: 'Saving...',
     formRequiredField: 'Required field.',
     formSectionsProgress: '{current} of {total} sections',
+    signature: 'Signature',
+    signatureDraw: 'Draw',
+    signatureType: 'Type',
+    signatureClear: 'Clear',
+    signatureCanvasLabel: 'Draw signature',
+    signatureDrawPlaceholder: 'Draw signature here',
+    signatureFullName: 'Full name',
+    signatureTypedStatement:
+      'By typing my name, I confirm that this is my electronic signature.',
+    signaturePreviewLabel: 'Signature',
+    signed: 'Signed',
+    signatureSigned: 'Electronically signed',
+    signatureSignedOnAt: 'Electronically signed on {date} at {time}',
     expired: 'Expired',
     keepCurrentAppointment: 'Keep current appointment',
     loadAppointmentsError: 'Unable to load appointments.',
@@ -367,9 +451,14 @@ const careCopy = {
     moreAvailability: 'More availability',
     nextAppointment: 'Next appointment',
     newTime: 'New time',
+    needsSignature: 'Needs signature',
     noAppointments: 'You do not have any appointments yet.',
     noAvailableTimes: 'No available times were found for this date.',
+    noConsents: 'You do not have any consents right now.',
     noForms: 'You do not have any forms right now.',
+    noOverviewDescription:
+      'There’s nothing that needs your attention right now. New appointments, forms, consents, and other updates from your clinic will appear here.',
+    noOverviewTitle: 'You’re all caught up',
     noLongerAvailable: 'No longer available',
     overview: 'Overview',
     overviewError: 'Unable to load your Care Page overview.',
@@ -394,6 +483,7 @@ const careCopy = {
     seeAllDocuments: 'See all documents',
     selectedTime: 'Selected time',
     signOut: 'Sign out',
+    signedOrUnavailable: 'Signed or unavailable',
     submitForm: 'Submit form',
     saveProgress: 'Save progress',
     thingsToComplete: 'Things to complete',
@@ -422,6 +512,7 @@ const careCopy = {
     appointmentUnavailable: 'Ce rendez-vous n est plus disponible.',
     backToAppointments: 'Retour aux rendez-vous',
     backToAppointmentDetails: 'Retour aux details du rendez-vous',
+    backToConsents: 'Retour aux consentements',
     availableTimes: 'Heures disponibles',
     carePageUnavailable: 'Page de soins indisponible',
     carePageSections: 'Sections de la page de soins',
@@ -453,6 +544,8 @@ const careCopy = {
     continue: 'Continuer',
     continueForm: 'Continuer le formulaire',
     consent: 'Consentement',
+    consentNoLongerAvailable: 'Ce consentement n est plus disponible.',
+    consentSignedSuccess: 'Votre consentement a ete signe',
     consents: 'Consentements',
     contactClinic:
       'Contactez la clinique pour demander un nouveau lien securise.',
@@ -480,6 +573,19 @@ const careCopy = {
     formSaving: 'Enregistrement...',
     formRequiredField: 'Champ obligatoire.',
     formSectionsProgress: '{current} sur {total} sections',
+    signature: 'Signature',
+    signatureDraw: 'Dessiner',
+    signatureType: 'Taper',
+    signatureClear: 'Effacer',
+    signatureCanvasLabel: 'Dessiner la signature',
+    signatureDrawPlaceholder: 'Dessiner la signature ici',
+    signatureFullName: 'Nom complet',
+    signatureTypedStatement:
+      'En tapant mon nom, je confirme qu il s agit de ma signature electronique.',
+    signaturePreviewLabel: 'Signature',
+    signed: 'Signe',
+    signatureSigned: 'Signature electronique',
+    signatureSignedOnAt: 'Signature electronique le {date} a {time}',
     expired: 'Expire',
     keepCurrentAppointment: 'Garder le rendez-vous actuel',
     loadAppointmentsError: 'Impossible de charger les rendez-vous.',
@@ -498,10 +604,15 @@ const careCopy = {
     moreAvailability: 'Plus de disponibilites',
     nextAppointment: 'Prochain rendez-vous',
     newTime: 'Nouvelle heure',
+    needsSignature: 'Signature requise',
     noAppointments: 'Vous n avez pas encore de rendez-vous.',
     noAvailableTimes:
       'Aucune heure disponible n a ete trouvee pour cette date.',
+    noConsents: 'Vous n avez aucun consentement pour le moment.',
     noForms: 'Vous n avez aucun formulaire pour le moment.',
+    noOverviewDescription:
+      'Rien ne requiert votre attention pour le moment. Les nouveaux rendez-vous, formulaires, consentements et autres mises a jour de votre clinique apparaitront ici.',
+    noOverviewTitle: 'Vous etes a jour',
     noLongerAvailable: 'Plus disponible',
     overview: 'Accueil',
     overviewError: 'Impossible de charger votre accueil.',
@@ -526,6 +637,7 @@ const careCopy = {
     seeAllDocuments: 'Voir tous les documents',
     selectedTime: 'Heure choisie',
     signOut: 'Se deconnecter',
+    signedOrUnavailable: 'Signes ou indisponibles',
     submitForm: 'Soumettre le formulaire',
     saveProgress: 'Enregistrer la progression',
     thingsToComplete: 'A completer',
@@ -1183,10 +1295,22 @@ function Overview({
   const recentDocuments = (overview.recentDocuments ?? [])
     .filter((document) => document.id)
     .slice(0, 3);
+  const hasOverviewContent =
+    pendingTasks.length > 0 ||
+    Boolean(overview.nextAppointment) ||
+    recentDocuments.length > 0;
+
   return (
     <div className="care-section">
+      {hasOverviewContent ? null : (
+        <NeutralEmptyState>
+          <h2>{t('noOverviewTitle')}</h2>
+          <p>{t('noOverviewDescription')}</p>
+        </NeutralEmptyState>
+      )}
+
       {pendingTasks.length ? (
-        <section className="care-block care-priority-block">
+        <section className="care-block">
           <h2>{t('thingsToComplete')}</h2>
           <div className="care-list">
             {pendingTasks.map((task) => (
@@ -1946,7 +2070,7 @@ function FormFlow({
     if (!pendingFocusFieldId) return;
     const escapedFieldId = cssEscape(pendingFocusFieldId);
     const target = document.querySelector<HTMLElement>(
-      `[data-field-id="${escapedFieldId}"] input:not([type="hidden"]), [data-field-id="${escapedFieldId}"] textarea, [data-field-id="${escapedFieldId}"] select`,
+      `[data-field-id="${escapedFieldId}"] input:not([type="hidden"]), [data-field-id="${escapedFieldId}"] textarea, [data-field-id="${escapedFieldId}"] select, [data-field-id="${escapedFieldId}"] canvas`,
     );
     if (!target) return;
     target.focus({ preventScroll: true });
@@ -2019,7 +2143,7 @@ function FormFlow({
     try {
       await corePublic(`/care/forms/${encodeURIComponent(assignmentId)}`, {
         method: 'PATCH',
-        body: JSON.stringify({ answers }),
+        body: JSON.stringify({ answers: submissionAnswers(answers, schema!) }),
       });
       setMessage(t('formProgressSaved'));
       onSaved();
@@ -2052,7 +2176,7 @@ function FormFlow({
         `/care/forms/${encodeURIComponent(assignmentId)}/submit`,
         {
           method: 'POST',
-          body: JSON.stringify({ answers, submitterType: 'PATIENT' }),
+          body: JSON.stringify({ answers: submissionAnswers(answers, schema!) }),
         },
       );
       setSubmitDialogOpen(false);
@@ -2080,6 +2204,7 @@ function FormFlow({
         </div>
       ) : null}
       {actionError ? <InlineError message={actionError} /> : null}
+      {readOnly ? <div className="notice success">{t('completed')}</div> : null}
       <div className="care-form-title">
         <h2>{title}</h2>
         {form.description ? <p className="muted">{form.description}</p> : null}
@@ -2171,9 +2296,7 @@ function FormFlow({
             )}
           </div>
         </div>
-      ) : (
-        <div className="notice success">{t('completed')}</div>
-      )}
+      ) : null}
       {submitDialogOpen ? (
         <CareFormSubmitDialog
           busy={submitting}
@@ -2525,13 +2648,19 @@ function ConsentsSection({
 }: {
   resourceId?: string;
   refreshKey: number;
-  onNavigate: (view: CareView, resourceId?: string) => void;
+  onNavigate: (
+    view: CareView,
+    resourceId?: string,
+    options?: CareNavigationOptions,
+  ) => void;
   onChanged: () => void;
 }) {
   const [consents, setConsents] = useState<CareConsentSummaryDTO[] | null>(
     null,
   );
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const invalidConsentIdsRef = useRef(new Set<string>());
 
   useEffect(() => {
     let active = true;
@@ -2553,66 +2682,200 @@ function ConsentsSection({
     };
   }, [refreshKey]);
 
+  useEffect(() => {
+    if (!consents || !resourceId) return;
+    const selected = consents.find(
+      (item) =>
+        item.id === resourceId &&
+        !hiddenConsentStatuses.has(item.status ?? ''),
+    );
+    if (!selected) {
+      invalidConsentIdsRef.current.add(resourceId);
+      setNotice(t('consentNoLongerAvailable'));
+      onNavigate('consents', undefined, { mode: 'replace' });
+    }
+  }, [consents, onNavigate, resourceId]);
+
+  function openConsent(id: string) {
+    setNotice(null);
+    onNavigate('consents', id, { mode: 'push' });
+  }
+
+  function backToConsents() {
+    onNavigate('consents', undefined, { mode: 'replace' });
+  }
+
+  function handleUnavailable() {
+    if (resourceId) invalidConsentIdsRef.current.add(resourceId);
+    setNotice(t('consentNoLongerAvailable'));
+    onChanged();
+    onNavigate('consents', undefined, { mode: 'replace' });
+  }
+
+  function handleSigned() {
+    setNotice(t('consentSignedSuccess'));
+    onChanged();
+    onNavigate('consents', undefined, { mode: 'replace' });
+  }
+
   if (error) return <InlineError message={error} />;
+  if (resourceId) {
+    if (!consents) {
+      return (
+        <section className="care-block care-form-completion-shell">
+          <ContentLoader label={t('loadingConsent')} />
+        </section>
+      );
+    }
+    if (invalidConsentIdsRef.current.has(resourceId)) {
+      return (
+        <section className="care-block">
+          <h2>{t('consents')}</h2>
+          <NeutralEmptyState>{t('consentNoLongerAvailable')}</NeutralEmptyState>
+        </section>
+      );
+    }
+    const summary = consents.find((item) => item.id === resourceId);
+    if (!summary) {
+      return (
+        <section className="care-block care-form-completion-shell">
+          <ContentLoader label={t('loadingConsent')} />
+        </section>
+      );
+    }
+    return (
+      <CareConsentCompletionView
+        assignmentId={resourceId}
+        summary={summary}
+        onBack={backToConsents}
+        onSigned={handleSigned}
+        onUnavailable={handleUnavailable}
+      />
+    );
+  }
+
   if (!consents) return <ContentLoader label={t('loadingConsentList')} />;
-  const pending = consents.filter((item) =>
+  const visibleConsents = consents.filter(
+    (item) => !hiddenConsentStatuses.has(item.status ?? ''),
+  );
+  const pending = visibleConsents.filter((item) =>
     pendingConsentStatuses.has(item.status ?? ''),
   );
-  const completed = consents.filter(
+  const completed = visibleConsents.filter(
     (item) => !pendingConsentStatuses.has(item.status ?? ''),
   );
+  const hasVisibleConsents = pending.length || completed.length;
 
   return (
-    <div className="care-two-column">
-      <section className="care-block">
-        <h2>Consents</h2>
-        <GroupedTasks
-          title="Needs signature"
-          items={pending}
-          activeId={resourceId}
-          onOpen={(id) => onNavigate('consents', id)}
-        />
-        <GroupedTasks
-          title="Signed or unavailable"
-          items={completed}
-          activeId={resourceId}
-          onOpen={(id) => onNavigate('consents', id)}
-        />
-      </section>
-      <section className="care-block">
-        <h2>Consent details</h2>
-        {resourceId ? (
-          <ConsentFlow assignmentId={resourceId} onChanged={onChanged} />
-        ) : (
-          <EmptyState>Select a consent to review it.</EmptyState>
-        )}
-      </section>
-    </div>
+    <section className="care-block care-consents-landing">
+      <h2>{t('consents')}</h2>
+      {notice ? (
+        <div className="notice success care-dismissible-notice" role="status">
+          <span>{notice}</span>
+          <button
+            type="button"
+            aria-label={t('dismissFormMessage')}
+            className="care-notice-close"
+            onClick={() => setNotice(null)}
+          >
+            <X size={16} aria-hidden="true" />
+          </button>
+        </div>
+      ) : null}
+      {hasVisibleConsents ? (
+        <>
+          <CareConsentsGroup
+            title={t('needsSignature')}
+            items={pending}
+            onOpen={openConsent}
+          />
+          <CareConsentsGroup
+            title={t('signedOrUnavailable')}
+            items={completed}
+            onOpen={openConsent}
+          />
+        </>
+      ) : (
+        <NeutralEmptyState>{t('noConsents')}</NeutralEmptyState>
+      )}
+    </section>
+  );
+}
+
+function CareConsentCompletionView({
+  assignmentId,
+  summary,
+  onBack,
+  onSigned,
+  onUnavailable,
+}: {
+  assignmentId: string;
+  summary: CareConsentSummaryDTO;
+  onBack: () => void;
+  onSigned: () => void;
+  onUnavailable: () => void;
+}) {
+  return (
+    <section className="care-block care-form-completion-shell">
+      <button
+        type="button"
+        aria-label={t('backToConsents')}
+        className="care-form-back"
+        onClick={onBack}
+      >
+        <ArrowLeft size={16} aria-hidden="true" />
+        {t('consents')}
+      </button>
+      <ConsentFlow
+        assignmentId={assignmentId}
+        fallbackTitle={summary.title}
+        onSigned={onSigned}
+        onUnavailable={onUnavailable}
+      />
+    </section>
   );
 }
 
 function ConsentFlow({
   assignmentId,
-  onChanged,
+  fallbackTitle,
+  onSigned,
+  onUnavailable,
 }: {
   assignmentId: string;
-  onChanged: () => void;
+  fallbackTitle?: string;
+  onSigned: () => void;
+  onUnavailable: () => void;
 }) {
   const [consent, setConsent] = useState<PublicConsentDTO | null>(null);
-  const [typedSignature, setTypedSignature] = useState('');
+  const [signatures, setSignatures] = useState<Record<string, SignatureAnswer>>(
+    {},
+  );
   const [acknowledgements, setAcknowledgements] = useState<
     Record<string, boolean>
   >({});
-  const [finalConfirmation, setFinalConfirmation] = useState(false);
+  const [signatureErrors, setSignatureErrors] = useState<Record<string, string>>(
+    {},
+  );
+  const [acknowledgementErrors, setAcknowledgementErrors] = useState<
+    Record<string, string>
+  >({});
   const [error, setError] = useState<string | null>(null);
-  const [complete, setComplete] = useState(false);
   const [busy, setBusy] = useState(false);
+  const onUnavailableRef = useRef(onUnavailable);
+
+  useEffect(() => {
+    onUnavailableRef.current = onUnavailable;
+  }, [onUnavailable]);
 
   useEffect(() => {
     let active = true;
     setConsent(null);
     setError(null);
-    setComplete(false);
+    setSignatures({});
+    setSignatureErrors({});
+    setAcknowledgementErrors({});
+    setAcknowledgements({});
     corePublic<PublicConsentDTO>(
       `/care/consents/${encodeURIComponent(assignmentId)}`,
     )
@@ -2620,39 +2883,102 @@ function ConsentFlow({
         if (active) setConsent(data);
       })
       .catch(() => {
-        if (active)
-          setError('That consent is not available in this Care Page.');
+        if (active) onUnavailableRef.current();
       });
     return () => {
       active = false;
     };
   }, [assignmentId]);
 
-  if (error) return <InlineError message={error} />;
-  if (!consent) return <ContentLoader label={t('loadingConsent')} />;
-  if (complete)
-    return <div className="notice success">Your consent has been signed.</div>;
+  if (!consent) {
+    return error ? (
+      <InlineError message={error} />
+    ) : (
+      <ContentLoader label={t('loadingConsent')} />
+    );
+  }
+  const document = normalizeConsentDocument(consent.documentSchema);
+  const signatureBlocks = consentSignatureBlocks(document);
+  const acknowledgementBlocks = consentAcknowledgementBlocks(document);
+  const signedSignatureValues = consentSignatureValues(consent, signatureBlocks);
+  const signedAcknowledgementValues = consentAcknowledgementValues(consent);
+  const consentSignature = consentSignatureAnswer(consent);
+  if (!consent.open && (hasSignatureValues(signedSignatureValues) || consentSignature))
+    return (
+      <div className="care-form-flow">
+        <div className="notice success">{t('signed')}</div>
+        <div className="care-form-title">
+          <h2>{consent.title ?? fallbackTitle ?? t('consent')}</h2>
+        </div>
+        {signatureBlocks.length ? (
+          <ConsentDocumentSections
+            document={document}
+            signatureValues={signedSignatureValues}
+            acknowledgementValues={signedAcknowledgementValues}
+            readOnly
+            onSignatureChange={() => undefined}
+            onAcknowledgementChange={() => undefined}
+          />
+        ) : (
+          <SignatureField
+            field={{
+              id: 'consent-signature',
+              type: 'SIGNATURE',
+              label: t('signature'),
+              required: true,
+            }}
+            value={consentSignature}
+            readOnly
+            onChange={() => undefined}
+          />
+        )}
+      </div>
+    );
   if (!consent.open)
     return (
-      <EmptyState>
-        {completedText(
-          consent.closedReason,
-          'This consent is not currently open.',
-        )}
-      </EmptyState>
+      <NeutralEmptyState>
+        {completedText(consent.closedReason, t('consentNoLongerAvailable'))}
+      </NeutralEmptyState>
     );
 
-  const required =
-    (consent.requiredAcknowledgements as
-      Array<{ id?: string; label?: string }> | undefined) ?? [];
-
+  const legacyRequired =
+    acknowledgementBlocks.length
+      ? []
+      : ((consent.requiredAcknowledgements as
+          | Array<{ id?: string; label?: string }>
+          | undefined) ?? []);
   async function sign() {
-    if (!typedSignature.trim() || !finalConfirmation) {
-      setError('Please complete the signing details.');
+    const missingSignatures = signatureBlocks.filter(
+      (block) => block.required !== false && !isSignatureComplete(signatures[block.id]),
+    );
+    const nextSignatureErrors = Object.fromEntries(
+      missingSignatures.map((block) => [
+        block.id,
+        'Please complete the signing details.',
+      ]),
+    );
+    const missingAcknowledgements = acknowledgementBlocks.filter(
+      (block) => block.required !== false && acknowledgements[block.id] !== true,
+    );
+    const nextAcknowledgementErrors = Object.fromEntries(
+      missingAcknowledgements.map((block) => [
+        block.id,
+        'Please complete the required acknowledgement.',
+      ]),
+    );
+    if (
+      missingSignatures.length ||
+      missingAcknowledgements.length
+    ) {
+      setError(null);
+      setSignatureErrors(nextSignatureErrors);
+      setAcknowledgementErrors(nextAcknowledgementErrors);
       return;
     }
+    setSignatureErrors({});
+    setAcknowledgementErrors({});
     if (
-      required.some(
+      legacyRequired.some(
         (ack, index) => acknowledgements[ack.id ?? `ack-${index}`] !== true,
       )
     ) {
@@ -2667,15 +2993,19 @@ function ConsentFlow({
         {
           method: 'POST',
           body: JSON.stringify({
-            submitterType: 'PATIENT',
             acknowledgements,
-            typedSignature,
-            finalConfirmation,
+            signatures: Object.fromEntries(
+              signatureBlocks
+                .filter((block) => isSignatureComplete(signatures[block.id]))
+                .map((block) => [
+                  block.id,
+                  submissionSignatureValue(signatures[block.id]),
+                ]),
+            ),
           }),
         },
       );
-      setComplete(true);
-      onChanged();
+      onSigned();
     } catch (signError) {
       setError(
         signError instanceof Error
@@ -2689,16 +3019,49 @@ function ConsentFlow({
 
   return (
     <div className="care-form-flow">
-      <div>
-        <h3>{consent.title ?? 'Consent'}</h3>
+      <div className="care-form-title">
+        <h2>{consent.title ?? fallbackTitle ?? t('consent')}</h2>
         {consent.expiresAt ? (
           <p className="muted">Expires {formatClinicDate(consent.expiresAt)}</p>
         ) : null}
       </div>
-      <SafeRichText html={consent.bodyHtml ?? ''} />
-      {required.length ? (
+      <ConsentDocumentSections
+        document={document}
+        signatureValues={signatures}
+        signatureErrors={signatureErrors}
+        acknowledgementValues={acknowledgements}
+        acknowledgementErrors={acknowledgementErrors}
+        readOnly={false}
+        onSignatureChange={(blockId, value) => {
+          setSignatureErrors((current) => {
+            const next = { ...current };
+            delete next[blockId];
+            return next;
+          });
+          setSignatures((current) => ({
+            ...current,
+            [blockId]:
+              signatureAnswer(value) ?? {
+                method: 'DRAWN',
+                drawing: { strokes: [] },
+            },
+          }));
+        }}
+        onAcknowledgementChange={(blockId, value) => {
+          setAcknowledgementErrors((current) => {
+            const next = { ...current };
+            delete next[blockId];
+            return next;
+          });
+          setAcknowledgements((current) => ({
+            ...current,
+            [blockId]: value,
+          }));
+        }}
+      />
+      {legacyRequired.length ? (
         <div className="choice-stack">
-          {required.map((ack, index) => {
+          {legacyRequired.map((ack, index) => {
             const id = ack.id ?? `ack-${index}`;
             return (
               <label key={id} className="checkbox-card">
@@ -2718,30 +3081,395 @@ function ConsentFlow({
           })}
         </div>
       ) : null}
-      <label className="document-field">
-        <span>Typed signature *</span>
-        <input
-          value={typedSignature}
-          onChange={(event) => setTypedSignature(event.target.value)}
-        />
-      </label>
-      <label className="checkbox-card">
-        <input
-          type="checkbox"
-          checked={finalConfirmation}
-          onChange={(event) => setFinalConfirmation(event.target.checked)}
-        />
-        <span>
-          I confirm that I am signing this consent electronically and that the
-          information above is correct.
-        </span>
-      </label>
       {error ? <InlineError message={error} /> : null}
       <button type="button" disabled={busy} onClick={sign}>
         <Send size={16} />
         Sign consent
       </button>
     </div>
+  );
+}
+
+function CareConsentsGroup({
+  title,
+  items,
+  onOpen,
+}: {
+  title: string;
+  items: CareConsentSummaryDTO[];
+  onOpen: (id: string) => void;
+}) {
+  if (!items.length) return null;
+  return (
+    <div className="care-task-group care-form-group">
+      <h3>{title}</h3>
+      <div className="care-list">
+        {items.map((item) => (
+          <CareConsentCard key={item.id} consent={item} onOpen={onOpen} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ConsentDocumentSections({
+  document,
+  signatureValues = {},
+  signatureErrors = {},
+  acknowledgementValues = {},
+  acknowledgementErrors = {},
+  readOnly = true,
+  onSignatureChange,
+  onAcknowledgementChange,
+}: {
+  document: unknown;
+  signatureValues?: Record<string, unknown>;
+  signatureErrors?: Record<string, string>;
+  acknowledgementValues?: Record<string, boolean>;
+  acknowledgementErrors?: Record<string, string>;
+  readOnly?: boolean;
+  onSignatureChange?: (blockId: string, value: unknown) => void;
+  onAcknowledgementChange?: (blockId: string, value: boolean) => void;
+}) {
+  const sections =
+    document && typeof document === 'object' && 'sections' in document
+      ? (document as ConsentDocument).sections
+      : normalizeConsentDocument(document).sections;
+  if (!sections.length) return null;
+  return (
+    <>
+      {sections.map((section) => (
+        <section
+          key={section.id}
+          className="document-section consent-document-section"
+        >
+          {section.title ? (
+            <div className="document-section-heading">
+              <h3>{section.title}</h3>
+              {section.description ? (
+                <p className="document-section-description">
+                  {section.description}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+          {section.blocks.length ? (
+            <div className="document-fields">
+              {section.blocks.map((block) => (
+                <ConsentDocumentBlock
+                  key={block.id}
+                  block={block}
+                  signatureValues={signatureValues}
+                  signatureErrors={signatureErrors}
+                  acknowledgementValues={acknowledgementValues}
+                  acknowledgementErrors={acknowledgementErrors}
+                  readOnly={readOnly}
+                  onSignatureChange={onSignatureChange}
+                  onAcknowledgementChange={onAcknowledgementChange}
+                />
+              ))}
+            </div>
+          ) : null}
+        </section>
+      ))}
+    </>
+  );
+}
+
+function ConsentDocumentBlock({
+  block,
+  signatureValues,
+  signatureErrors,
+  acknowledgementValues,
+  acknowledgementErrors,
+  readOnly,
+  onSignatureChange,
+  onAcknowledgementChange,
+}: {
+  block: ConsentBlock;
+  signatureValues: Record<string, unknown>;
+  signatureErrors: Record<string, string>;
+  acknowledgementValues: Record<string, boolean>;
+  acknowledgementErrors: Record<string, string>;
+  readOnly: boolean;
+  onSignatureChange?: (blockId: string, value: unknown) => void;
+  onAcknowledgementChange?: (blockId: string, value: boolean) => void;
+}) {
+  if (block.type === 'COLUMNS') {
+    const children = (block.children ?? []).filter(consentContentBlock);
+    const ratios =
+      block.ratios?.length === children.length
+        ? block.ratios
+        : children.length === 3
+          ? [1, 1, 1]
+          : [1, 1];
+    if (!children.length) return null;
+    return (
+      <div
+        className="document-field care-form-columns"
+        style={
+          {
+            '--care-form-columns-template': ratios
+              .map((ratio) => `minmax(0, ${ratio}fr)`)
+              .join(' '),
+          } as CSSProperties
+        }
+      >
+        {children.map((child) => (
+          <ConsentDocumentBlock
+            key={child.id}
+            block={child}
+            signatureValues={signatureValues}
+            signatureErrors={signatureErrors}
+            acknowledgementValues={acknowledgementValues}
+            acknowledgementErrors={acknowledgementErrors}
+            readOnly={readOnly}
+            onSignatureChange={onSignatureChange}
+            onAcknowledgementChange={onAcknowledgementChange}
+          />
+        ))}
+      </div>
+    );
+  }
+  if (!consentContentBlock(block)) return null;
+  return (
+    <div className="document-field care-form-information">
+      {block.type === 'HEADING' ? (
+        <h4>{block.content || block.label}</h4>
+      ) : block.type === 'PARAGRAPH' ? (
+        <p>{block.content || block.label}</p>
+      ) : block.type === 'RICH_TEXT' ? (
+        <SafeRichText html={block.content ?? ''} />
+      ) : block.type === 'DIVIDER' ? (
+        <hr className="consent-document-divider" />
+      ) : block.type === 'ACKNOWLEDGEMENT' ? (
+        <ConsentAcknowledgementBlock
+          block={block}
+          checked={acknowledgementValues[block.id] === true}
+          error={acknowledgementErrors[block.id]}
+          readOnly={readOnly}
+          onChange={(value) => onAcknowledgementChange?.(block.id, value)}
+        />
+      ) : block.type === 'SIGNATURE' ? (
+        <SignatureField
+          field={{
+            id: block.id,
+            type: 'SIGNATURE',
+            label: block.label || t('signature'),
+            required: block.required !== false,
+          }}
+          value={signatureValues[block.id]}
+          error={signatureErrors[block.id]}
+          readOnly={readOnly}
+          onChange={(value) => onSignatureChange?.(block.id, value)}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function ConsentAcknowledgementBlock({
+  block,
+  checked,
+  error,
+  readOnly,
+  onChange,
+}: {
+  block: ConsentBlock;
+  checked: boolean;
+  error?: string;
+  readOnly: boolean;
+  onChange: (value: boolean) => void;
+}) {
+  const inputId = `care-consent-ack-${block.id}`;
+  const errorId = error ? `${inputId}-error` : undefined;
+  const label = block.content || block.label || 'I acknowledge this item.';
+
+  if (readOnly) {
+    return (
+      <div className="checkbox-card consent-acknowledgement-block read-only">
+        <input type="checkbox" checked={checked} disabled readOnly />
+        <span>{label}</span>
+      </div>
+    );
+  }
+
+  return (
+    <label
+      className="checkbox-card consent-acknowledgement-block"
+      data-invalid={error ? true : undefined}
+      htmlFor={inputId}
+    >
+      <input
+        id={inputId}
+        type="checkbox"
+        checked={checked}
+        aria-invalid={error ? true : undefined}
+        aria-describedby={errorId}
+        onChange={(event) => onChange(event.target.checked)}
+      />
+      <span>
+        {label}
+        {block.required !== false ? ' *' : ''}
+      </span>
+      {error ? (
+        <small className="field-error" id={errorId}>
+          {error}
+        </small>
+      ) : null}
+    </label>
+  );
+}
+
+function normalizeConsentDocument(value: unknown): ConsentDocument {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return { sections: [] };
+  }
+  const sections = (value as { sections?: unknown }).sections;
+  if (!Array.isArray(sections)) return { sections: [] };
+  return {
+    sections: sections
+      .map((section, sectionIndex): ConsentSection | null => {
+        if (!section || typeof section !== 'object' || Array.isArray(section)) {
+          return null;
+        }
+        const raw = section as {
+          id?: unknown;
+          title?: unknown;
+          description?: unknown;
+          blocks?: unknown;
+        };
+        const normalized: ConsentSection = {
+          id: stringValue(raw.id) ?? `section-${sectionIndex + 1}`,
+          title: stringValue(raw.title) ?? `Section ${sectionIndex + 1}`,
+          blocks: Array.isArray(raw.blocks) ? normalizeConsentBlocks(raw.blocks) : [],
+        };
+        const description = stringValue(raw.description);
+        if (description) normalized.description = description;
+        return normalized;
+      })
+      .filter((section): section is ConsentSection => Boolean(section)),
+  };
+}
+
+function normalizeConsentBlocks(value: unknown[]): ConsentBlock[] {
+  return value
+    .map((block, blockIndex): ConsentBlock | null => {
+      if (!block || typeof block !== 'object' || Array.isArray(block)) {
+        return null;
+      }
+      const raw = block as {
+        id?: unknown;
+        type?: unknown;
+        label?: unknown;
+        content?: unknown;
+        required?: unknown;
+        ratios?: unknown;
+        children?: unknown;
+      };
+      const type = stringValue(raw.type)?.toUpperCase() as
+        | ConsentBlockType
+        | undefined;
+      if (
+        !type ||
+        ![
+          'COLUMNS',
+          'HEADING',
+          'PARAGRAPH',
+          'RICH_TEXT',
+          'DIVIDER',
+          'ACKNOWLEDGEMENT',
+          'SIGNATURE',
+        ].includes(type)
+      ) {
+        return null;
+      }
+      const normalized: ConsentBlock = {
+        id: stringValue(raw.id) ?? `block-${blockIndex + 1}`,
+        type,
+        label: stringValue(raw.label) ?? typeLabel(type),
+      };
+      if (raw.content != null) normalized.content = String(raw.content);
+      if (type === 'ACKNOWLEDGEMENT') {
+        normalized.required = raw.required !== false;
+      }
+      if (type === 'COLUMNS') {
+        normalized.ratios = Array.isArray(raw.ratios)
+          ? raw.ratios.filter(
+              (ratio): ratio is number => typeof ratio === 'number',
+            )
+          : undefined;
+        normalized.children = Array.isArray(raw.children)
+          ? normalizeConsentBlocks(raw.children)
+          : [];
+      }
+      return normalized;
+    })
+    .filter((block): block is ConsentBlock => Boolean(block));
+}
+
+function consentContentBlock(block: ConsentBlock) {
+  return [
+    'COLUMNS',
+    'HEADING',
+    'PARAGRAPH',
+    'RICH_TEXT',
+    'DIVIDER',
+    'ACKNOWLEDGEMENT',
+    'SIGNATURE',
+  ].includes(block.type);
+}
+
+function typeLabel(type: ConsentBlockType) {
+  return type
+    .toLowerCase()
+    .replace(/_/g, ' ')
+    .replace(/^./, (char) => char.toUpperCase());
+}
+
+function stringValue(value: unknown) {
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+function CareConsentCard({
+  consent,
+  onOpen,
+}: {
+  consent: CareConsentSummaryDTO;
+  onOpen: (id: string) => void;
+}) {
+  if (!consent.id) return null;
+  const pending = pendingConsentStatuses.has(consent.status ?? '');
+  const statusLabel = pending
+    ? t('reviewAndSign')
+    : expiredConsentStatuses.has(consent.status ?? '')
+      ? t('expired')
+      : withdrawnConsentStatuses.has(consent.status ?? '')
+        ? t('withdrawnByClinic')
+        : completedConsentStatuses.has(consent.status ?? '')
+          ? t('signed')
+          : t('noLongerAvailable');
+  const context = taskContext(
+    consent.appointmentId,
+    undefined,
+    consent.expiresAt,
+  );
+
+  return (
+    <button
+      type="button"
+      className="care-list-item care-form-card care-consent-card"
+      onClick={() => consent.id && onOpen(consent.id)}
+    >
+      <span>
+        <strong>{consent.title ?? t('consent')}</strong>
+        {context ? <small>{context}</small> : null}
+        <small className={pending ? undefined : 'care-list-status'}>
+          {statusLabel}
+        </small>
+      </span>
+      <ArrowRight size={16} aria-hidden="true" />
+    </button>
   );
 }
 
@@ -2952,51 +3680,6 @@ function OverviewDocumentRow({
   );
 }
 
-function GroupedTasks({
-  title,
-  items,
-  activeId,
-  onOpen,
-}: {
-  title: string;
-  items: Array<{
-    id?: string;
-    title?: string;
-    status?: string;
-    dueAt?: string;
-    expiresAt?: string;
-    assignedAt?: string;
-    requestedAt?: string;
-  }>;
-  activeId?: string;
-  onOpen: (id: string) => void;
-}) {
-  return (
-    <div className="care-task-group">
-      <h3>{title}</h3>
-      <div className="care-list">
-        {items.map((item) => (
-          <button
-            type="button"
-            className={
-              item.id === activeId ? 'care-list-item active' : 'care-list-item'
-            }
-            key={item.id}
-            onClick={() => item.id && onOpen(item.id)}
-          >
-            <span>
-              <strong>{item.title ?? 'Item'}</strong>
-              <small>{item.status}</small>
-            </span>
-            <ArrowRight size={16} />
-          </button>
-        ))}
-        {!items.length ? <EmptyState>No items.</EmptyState> : null}
-      </div>
-    </div>
-  );
-}
-
 function overviewTasks(overview: CareOverviewDTO): PendingTask[] {
   const nextAppointmentId = overview.nextAppointment?.id;
   return [
@@ -3030,7 +3713,7 @@ function overviewTasks(overview: CareOverviewDTO): PendingTask[] {
         context: taskContext(
           consent.appointmentId,
           nextAppointmentId,
-          consent.expiresAt ?? consent.requestedAt,
+          consent.expiresAt,
         ),
         appointmentId: consent.appointmentId,
         orderAt: consent.expiresAt ?? consent.requestedAt,
@@ -4422,6 +5105,18 @@ function FieldInput({
     );
   }
 
+  if (isSignatureField(field)) {
+    return (
+      <SignatureField
+        field={field}
+        value={value}
+        error={error}
+        readOnly={readOnly}
+        onChange={onChange}
+      />
+    );
+  }
+
   return (
     <label
       className="document-field"
@@ -4446,19 +5141,6 @@ function FieldInput({
           aria-describedby={describedBy}
           onChange={(event) => onChange(event.target.value)}
         />
-      ) : field.type === 'SIGNATURE_ACKNOWLEDGEMENT' ? (
-        <span className="checkbox-line">
-          <input
-            id={inputId}
-            type="checkbox"
-            checked={value === true}
-            disabled={readOnly}
-            aria-invalid={error ? true : undefined}
-            aria-describedby={describedBy}
-            onChange={(event) => onChange(event.target.checked)}
-          />
-          <span>Yes</span>
-        </span>
       ) : field.type === 'DROPDOWN' && field.options?.length ? (
         <select
           id={inputId}
@@ -4494,6 +5176,283 @@ function FieldInput({
         </small>
       ) : null}
     </label>
+  );
+}
+
+function SignatureField({
+  field,
+  value,
+  error,
+  readOnly,
+  onChange,
+}: {
+  field: Field;
+  value: unknown;
+  error?: string;
+  readOnly: boolean;
+  onChange: (value: unknown) => void;
+}) {
+  const answer = signatureAnswer(value);
+  const label = formTemplateText(field.label) || t('signature');
+  const inputId = `care-form-field-${field.id}`;
+  const labelId = `${inputId}-label`;
+  const descriptionId = field.description
+    ? `${inputId}-description`
+    : undefined;
+  const errorId = error ? `${inputId}-error` : undefined;
+  const describedBy =
+    [descriptionId, errorId].filter(Boolean).join(' ') || undefined;
+  const description = formTemplateText(field.description);
+
+  if (readOnly) {
+    return (
+      <div
+        className="document-field signature-field"
+        data-field-id={field.id}
+        aria-labelledby={labelId}
+      >
+        <span className="field-label" id={labelId}>
+          {label}
+        </span>
+        <SubmittedSignature answer={answer} />
+      </div>
+    );
+  }
+
+  function changeMode(method: 'DRAWN' | 'TYPED') {
+    const current = answer ?? { method, drawing: { strokes: [] } };
+    if (method === 'DRAWN') {
+      onChange({
+        method: 'DRAWN',
+        drawing: current.drawing ?? { strokes: [] },
+      });
+      return;
+    }
+    onChange({
+      method: 'TYPED',
+      typedName: current.typedName ?? '',
+    });
+  }
+
+  const method = answer?.method ?? 'DRAWN';
+  const drawing = answer?.drawing ?? { strokes: [] };
+  const typedName = answer?.typedName ?? '';
+
+  return (
+    <fieldset
+      className="document-field signature-field"
+      data-field-id={field.id}
+      data-invalid={error ? true : undefined}
+      aria-labelledby={labelId}
+      aria-describedby={describedBy}
+    >
+      <span className="field-label" id={labelId}>
+        {label}
+        {field.required ? ' *' : ''}
+      </span>
+      {field.description ? (
+        <small className="field-description" id={descriptionId}>
+          {description}
+        </small>
+      ) : null}
+      <div className="signature-mode-tabs" role="tablist" aria-label={label}>
+        {(['DRAWN', 'TYPED'] as const).map((mode) => (
+          <button
+            key={mode}
+            role="tab"
+            type="button"
+            className={method === mode ? 'active' : undefined}
+            aria-selected={method === mode}
+            onClick={() => changeMode(mode)}
+          >
+            {mode === 'DRAWN' ? t('signatureDraw') : t('signatureType')}
+          </button>
+        ))}
+      </div>
+      {method === 'DRAWN' ? (
+        <SignatureCanvasInput
+          id={inputId}
+          drawing={drawing}
+          describedBy={describedBy}
+          onChange={(nextDrawing) =>
+            onChange({ method: 'DRAWN', drawing: nextDrawing })
+          }
+        />
+      ) : (
+        <label className="signature-type-field" htmlFor={inputId}>
+          <span>{t('signatureFullName')}</span>
+          <input
+            id={inputId}
+            type="text"
+            value={typedName}
+            aria-invalid={error ? true : undefined}
+            aria-describedby={describedBy}
+            onChange={(event) =>
+              onChange({ method: 'TYPED', typedName: event.target.value })
+            }
+          />
+          <small>{t('signatureTypedStatement')}</small>
+        </label>
+      )}
+      {error ? (
+        <small className="field-error" id={errorId}>
+          {error}
+        </small>
+      ) : null}
+    </fieldset>
+  );
+}
+
+function SignatureCanvasInput({
+  id,
+  drawing,
+  describedBy,
+  onChange,
+}: {
+  id: string;
+  drawing: SignatureDrawingData;
+  describedBy?: string;
+  onChange: (drawing: SignatureDrawingData) => void;
+}) {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const drawingRef = useRef<SignatureDrawingData>(drawing);
+  const activePointerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    drawingRef.current = drawing;
+    redrawSignatureCanvas(canvasRef.current, drawing);
+  }, [drawing]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return undefined;
+    const resize = () => redrawSignatureCanvas(canvas, drawingRef.current);
+    resize();
+    const observer =
+      typeof ResizeObserver !== 'undefined' ? new ResizeObserver(resize) : null;
+    observer?.observe(canvas);
+    window.addEventListener('resize', resize);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener('resize', resize);
+    };
+  }, []);
+
+  function pointFromEvent(event: ReactPointerEvent<HTMLCanvasElement>) {
+    const rect = event.currentTarget.getBoundingClientRect();
+    return {
+      x: clamp01((event.clientX - rect.left) / Math.max(rect.width, 1)),
+      y: clamp01((event.clientY - rect.top) / Math.max(rect.height, 1)),
+    };
+  }
+
+  function pointerDown(event: ReactPointerEvent<HTMLCanvasElement>) {
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    activePointerRef.current = event.pointerId;
+    const next = {
+      strokes: [...drawingRef.current.strokes, { points: [pointFromEvent(event)] }],
+    };
+    drawingRef.current = next;
+    onChange(next);
+  }
+
+  function pointerMove(event: ReactPointerEvent<HTMLCanvasElement>) {
+    if (activePointerRef.current !== event.pointerId) return;
+    event.preventDefault();
+    const strokes = drawingRef.current.strokes;
+    const currentStroke = strokes.at(-1);
+    if (!currentStroke) return;
+    const next = {
+      strokes: [
+        ...strokes.slice(0, -1),
+        { points: [...currentStroke.points, pointFromEvent(event)] },
+      ],
+    };
+    drawingRef.current = next;
+    onChange(next);
+  }
+
+  function endPointer(event: ReactPointerEvent<HTMLCanvasElement>) {
+    if (activePointerRef.current !== event.pointerId) return;
+    event.preventDefault();
+    activePointerRef.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  }
+
+  return (
+    <div className="signature-pad">
+      <div className="signature-canvas-wrap">
+        {!hasSignatureDrawing(drawing) ? (
+          <span className="signature-canvas-placeholder">
+            {t('signatureDrawPlaceholder')}
+          </span>
+        ) : null}
+        <canvas
+          id={id}
+          ref={canvasRef}
+          className="signature-canvas"
+          role="img"
+          tabIndex={0}
+          aria-label={t('signatureCanvasLabel')}
+          aria-describedby={describedBy}
+          onPointerDown={pointerDown}
+          onPointerMove={pointerMove}
+          onPointerUp={endPointer}
+          onPointerCancel={endPointer}
+        />
+      </div>
+      <button
+        type="button"
+        className="secondary compact signature-clear"
+        onClick={() => onChange({ strokes: [] })}
+      >
+        {t('signatureClear')}
+      </button>
+    </div>
+  );
+}
+
+function SubmittedSignature({ answer }: { answer: SignatureAnswer | null }) {
+  if (!answer) return <span className="muted">-</span>;
+  const signedLine = signatureSignedLine(answer.signedAt);
+  if (answer.method === 'TYPED') {
+    return (
+      <div className="submitted-signature">
+        <strong>{answer.typedName ?? '-'}</strong>
+        <small>{signedLine}</small>
+      </div>
+    );
+  }
+  return (
+    <div className="submitted-signature">
+      <SignaturePreview drawing={answer.drawing ?? { strokes: [] }} />
+      <small>{signedLine}</small>
+    </div>
+  );
+}
+
+function signatureSignedLine(signedAt?: string) {
+  if (!signedAt) return t('signatureSigned');
+  return t('signatureSignedOnAt', {
+    date: formatClinicDate(signedAt),
+    time: formatClinicTime(signedAt),
+  });
+}
+
+function SignaturePreview({ drawing }: { drawing: SignatureDrawingData }) {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  useEffect(() => {
+    redrawSignatureCanvas(canvasRef.current, drawing);
+  }, [drawing]);
+  return (
+    <canvas
+      className="signature-canvas signature-preview-canvas"
+      ref={canvasRef}
+      aria-label={t('signaturePreviewLabel')}
+    />
   );
 }
 
@@ -4643,6 +5602,246 @@ function isEmptyOtherChoiceAnswer(field: Field, value: unknown) {
   return !singleChoiceOtherText(value).trim();
 }
 
+function isSignatureField(field: Field) {
+  return field.type === 'SIGNATURE' || field.type === 'SIGNATURE_ACKNOWLEDGEMENT';
+}
+
+function signatureAnswer(value: unknown): SignatureAnswer | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const answer = value as {
+    method?: unknown;
+    typedName?: unknown;
+    drawing?: unknown;
+    signedAt?: unknown;
+  };
+  const method = answer.method === 'TYPED' ? 'TYPED' : answer.method === 'DRAWN' ? 'DRAWN' : null;
+  if (!method) return null;
+  return {
+    method,
+    typedName: typeof answer.typedName === 'string' ? answer.typedName : undefined,
+    drawing: signatureDrawing(answer.drawing),
+    signedAt: typeof answer.signedAt === 'string' ? answer.signedAt : undefined,
+  };
+}
+
+function consentSignatureBlocks(document: ConsentDocument) {
+  return document.sections.flatMap((section) => consentSignatureBlocksIn(section.blocks));
+}
+
+function consentSignatureBlocksIn(blocks: ConsentBlock[]): ConsentBlock[] {
+  return blocks.flatMap((block): ConsentBlock[] =>
+    block.type === 'SIGNATURE'
+      ? [block]
+      : block.type === 'COLUMNS'
+        ? consentSignatureBlocksIn(block.children ?? [])
+        : [],
+  );
+}
+
+function consentAcknowledgementBlocks(document: ConsentDocument) {
+  return document.sections.flatMap((section) =>
+    consentAcknowledgementBlocksIn(section.blocks),
+  );
+}
+
+function consentAcknowledgementBlocksIn(blocks: ConsentBlock[]): ConsentBlock[] {
+  return blocks.flatMap((block): ConsentBlock[] =>
+    block.type === 'ACKNOWLEDGEMENT'
+      ? [block]
+      : block.type === 'COLUMNS'
+        ? consentAcknowledgementBlocksIn(block.children ?? [])
+        : [],
+  );
+}
+
+function consentSignatureValues(
+  consent: PublicConsentDTO,
+  signatureBlocks: ConsentBlock[],
+) {
+  const signature = (consent as PublicConsentWithSignature).signature;
+  if (!signature || typeof signature !== 'object' || Array.isArray(signature)) {
+    return {};
+  }
+  const values: Record<string, SignatureAnswer> = {};
+  const signaturePayload = signature.signature;
+  const nestedSignatures =
+    objectRecord(signaturePayload)?.signatures ?? signature.signatures;
+  if (
+    nestedSignatures &&
+    typeof nestedSignatures === 'object' &&
+    !Array.isArray(nestedSignatures)
+  ) {
+    Object.entries(nestedSignatures as Record<string, unknown>).forEach(
+      ([blockId, value]) => {
+        const answer = signatureAnswer(value);
+        if (answer) values[blockId] = { ...answer, signedAt: answer.signedAt ?? signature.signedAt };
+      },
+    );
+  }
+  const legacy = consentSignatureAnswer(consent);
+  if (legacy && signatureBlocks.length && !hasSignatureValues(values)) {
+    values[signatureBlocks[0].id] = legacy;
+  }
+  return values;
+}
+
+function consentAcknowledgementValues(consent: PublicConsentDTO) {
+  const signature = (consent as PublicConsentWithSignature).signature;
+  if (!signature || typeof signature !== 'object' || Array.isArray(signature)) {
+    return {};
+  }
+  const values = signature.acknowledgements;
+  if (!values || typeof values !== 'object' || Array.isArray(values)) {
+    return {};
+  }
+  return Object.fromEntries(
+    Object.entries(values).map(([key, value]) => [key, value === true]),
+  );
+}
+
+function hasSignatureValues(values: Record<string, unknown>) {
+  return Object.values(values).some((value) => Boolean(signatureAnswer(value)));
+}
+
+function objectRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function consentSignatureAnswer(consent: PublicConsentDTO): SignatureAnswer | null {
+  const signature = (consent as PublicConsentWithSignature).signature;
+  if (!signature || typeof signature !== 'object' || Array.isArray(signature)) {
+    return null;
+  }
+  const payload = signatureAnswer(signature.signature);
+  if (payload) {
+    return {
+      ...payload,
+      signedAt: payload.signedAt ?? signature.signedAt,
+    };
+  }
+  if (typeof signature.typedSignature === 'string') {
+    return {
+      method: 'TYPED',
+      typedName: signature.typedSignature,
+      signedAt: signature.signedAt,
+    };
+  }
+  return signatureAnswer(signature);
+}
+
+function signatureDrawing(value: unknown): SignatureDrawingData | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const strokes = (value as { strokes?: unknown }).strokes;
+  if (!Array.isArray(strokes)) return undefined;
+  return {
+    strokes: strokes
+      .map((stroke) => {
+        if (!stroke || typeof stroke !== 'object' || Array.isArray(stroke)) {
+          return null;
+        }
+        const points = (stroke as { points?: unknown }).points;
+        if (!Array.isArray(points)) return null;
+        return {
+          points: points
+            .map((point) => {
+              if (!point || typeof point !== 'object' || Array.isArray(point)) {
+                return null;
+              }
+              const x = (point as { x?: unknown }).x;
+              const y = (point as { y?: unknown }).y;
+              return typeof x === 'number' && typeof y === 'number'
+                ? { x: clamp01(x), y: clamp01(y) }
+                : null;
+            })
+            .filter((point): point is SignaturePoint => Boolean(point)),
+        };
+      })
+      .filter((stroke): stroke is SignatureStroke => Boolean(stroke)),
+  };
+}
+
+function hasSignatureDrawing(drawing?: SignatureDrawingData) {
+  return Boolean(
+    drawing?.strokes.some((stroke) => stroke.points.length > 1),
+  );
+}
+
+function isSignatureComplete(value: unknown) {
+  const answer = signatureAnswer(value);
+  if (!answer) return false;
+  if (answer.method === 'TYPED') return Boolean(answer.typedName?.trim());
+  return hasSignatureDrawing(answer.drawing);
+}
+
+function submissionSignatureValue(value: unknown) {
+  const answer = signatureAnswer(value);
+  if (!answer) return value;
+  if (answer.method === 'TYPED') {
+    return { method: 'TYPED', typedName: answer.typedName?.trim() ?? '' };
+  }
+  return { method: 'DRAWN', drawing: answer.drawing ?? { strokes: [] } };
+}
+
+function submissionAnswers(answers: Answers, schema: ClinicalSchema) {
+  const signatureIds = new Set(
+    schema.sections.flatMap((section) =>
+      fieldsInNodes(section.fields)
+        .filter(isSignatureField)
+        .map((field) => field.id),
+    ),
+  );
+  if (!signatureIds.size) return answers;
+  return Object.fromEntries(
+    Object.entries(answers).map(([id, value]) => [
+      id,
+      signatureIds.has(id) ? submissionSignatureValue(value) : value,
+    ]),
+  );
+}
+
+function redrawSignatureCanvas(
+  canvas: HTMLCanvasElement | null,
+  drawing?: SignatureDrawingData,
+) {
+  if (!canvas) return;
+  const rect = canvas.getBoundingClientRect();
+  const width = Math.max(1, rect.width || canvas.clientWidth || 1);
+  const height = Math.max(1, rect.height || canvas.clientHeight || 1);
+  const ratio = window.devicePixelRatio || 1;
+  const pixelWidth = Math.floor(width * ratio);
+  const pixelHeight = Math.floor(height * ratio);
+  if (canvas.width !== pixelWidth || canvas.height !== pixelHeight) {
+    canvas.width = pixelWidth;
+    canvas.height = pixelHeight;
+  }
+  const context = canvas.getContext('2d');
+  if (!context) return;
+  context.setTransform(ratio, 0, 0, ratio, 0, 0);
+  context.clearRect(0, 0, width, height);
+  context.lineCap = 'round';
+  context.lineJoin = 'round';
+  context.strokeStyle = '#111827';
+  context.lineWidth = 2.5;
+  (drawing?.strokes ?? []).forEach((stroke) => {
+    if (!stroke.points.length) return;
+    context.beginPath();
+    stroke.points.forEach((point, index) => {
+      const x = point.x * width;
+      const y = point.y * height;
+      if (index === 0) context.moveTo(x, y);
+      else context.lineTo(x, y);
+    });
+    context.stroke();
+  });
+}
+
+function clamp01(value: number) {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(1, value));
+}
+
 function validateRequired(
   schema: ClinicalSchema,
   answers: Answers,
@@ -4661,7 +5860,7 @@ function validateRequired(
         (Array.isArray(value) && value.length === 0) ||
         isEmptyOtherChoiceAnswer(field, value) ||
         (field.type === 'BOOLEAN' && typeof value !== 'boolean') ||
-        (field.type === 'SIGNATURE_ACKNOWLEDGEMENT' && value !== true);
+        (isSignatureField(field) && !isSignatureComplete(value));
       if (missing) errors[field.id] = t('formRequiredField');
     });
   });

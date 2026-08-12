@@ -26,6 +26,18 @@ async function readJson(request: NextRequest) {
 }
 
 async function jsonApiError(error: unknown, fallbackMessage: string) {
+  if (error instanceof UpstreamError) {
+    const payload = objectPayload(error.payload);
+    const message =
+      payload.message ||
+      payload.error ||
+      payload.detail ||
+      payload.title ||
+      fallbackMessage;
+
+    return NextResponse.json({ message }, { status: error.status });
+  }
+
   if (error instanceof ResponseError) {
     const payload = await error.response
       .clone()
@@ -78,6 +90,63 @@ async function proxyCore(request: NextRequest, path: string) {
 async function proxyChart(request: NextRequest, path: string) {
   const target = new URL(path, allomedApiBasePaths.chartPublic);
   return proxy(request, target);
+}
+
+async function careOverview(request: NextRequest) {
+  const [coreOverview, chartOverview] = await Promise.all([
+    upstreamJson(request, new URL('/care/overview', allomedApiBasePaths.corePublic)),
+    upstreamJson(request, new URL('/care/overview', allomedApiBasePaths.chartPublic)),
+  ]);
+
+  return NextResponse.json({
+    ...objectPayload(coreOverview),
+    pendingForms: arrayPayload(chartOverview, 'pendingForms', 'forms'),
+    pendingConsents: arrayPayload(chartOverview, 'pendingConsents', 'consents'),
+    recentDocuments: arrayPayload(chartOverview, 'recentDocuments', 'documents'),
+  });
+}
+
+async function upstreamJson(request: NextRequest, target: URL) {
+  request.nextUrl.searchParams.forEach((value, key) => {
+    target.searchParams.append(key, value);
+  });
+  const response = await fetch(target, {
+    headers: forwardedHeaders(request),
+    cache: 'no-store',
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new UpstreamError(response.status, payload);
+  }
+  return payload;
+}
+
+class UpstreamError extends Error {
+  constructor(
+    readonly status: number,
+    readonly payload: unknown,
+  ) {
+    super('Upstream request failed.');
+  }
+}
+
+function objectPayload(value: unknown) {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function arrayPayload(
+  value: unknown,
+  primaryKey: string,
+  fallbackKey: string,
+) {
+  const payload = objectPayload(value);
+  const primary = payload[primaryKey];
+  if (Array.isArray(primary)) return primary;
+  const fallback = payload[fallbackKey];
+  if (Array.isArray(fallback)) return fallback;
+  return [];
 }
 
 async function proxy(request: NextRequest, target: URL) {
@@ -176,6 +245,9 @@ export async function GET(request: NextRequest, context: RouteContext) {
 
   try {
     if (path[0] === 'care') {
+      if (path[1] === 'overview') {
+        return careOverview(request);
+      }
       if (isChartCarePath(path)) {
         return proxyChart(request, `/${path.map(encodeURIComponent).join('/')}`);
       }

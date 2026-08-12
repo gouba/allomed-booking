@@ -424,6 +424,26 @@ label {
   padding: 12px;
   background: #fff;
 }
+.consent-acknowledgement-block {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px 10px;
+}
+.consent-acknowledgement-block input[type="checkbox"] {
+  width: 18px;
+  min-width: 18px;
+  height: 18px;
+  min-height: 18px;
+  margin: 0;
+}
+.consent-acknowledgement-block span {
+  min-width: 0;
+  line-height: 1.35;
+}
+.consent-acknowledgement-block .field-error {
+  grid-column: 2;
+}
 .choice-stack {
   display: grid;
   gap: 10px;
@@ -438,7 +458,7 @@ label {
   line-height: 1.62;
 }
 .safe-rich-text p {
-  margin: 0 0 12px;
+  margin: 0 0 0px;
 }
 .safe-rich-text ul,
 .safe-rich-text ol {
@@ -448,24 +468,73 @@ label {
 .safe-rich-text a {
   color: var(--brand);
 }
+.safe-rich-text blockquote {
+  margin: 10px 0 12px 12px;
+  border-left: 3px solid var(--line-strong);
+  color: var(--ink);
+  padding: 8px 12px 8px 14px;
+}
+.safe-rich-text blockquote > :last-child {
+  margin-bottom: 0;
+}
+.safe-rich-text em,
+.safe-rich-text em *,
+.safe-rich-text i,
+.safe-rich-text i *,
+.safe-rich-text .italic,
+.safe-rich-text .italic *,
+.safe-rich-text [class~="italic"],
+.safe-rich-text [class~="italic"] *,
+.safe-rich-text [class*="-italic"],
+.safe-rich-text [class*="-italic"] *,
+.safe-rich-text [style*="font-style" i][style*="italic" i],
+.safe-rich-text [style*="font-style" i][style*="italic" i] *,
+.safe-rich-text [style*="font-style: italic"],
+.safe-rich-text [style*="font-style:italic"] {
+  font-synthesis: style;
+  font-style: italic !important;
+  font-family: "Helvetica Neue", Arial, sans-serif;
+}
+.consent-document-section .safe-rich-text h2 {
+  margin: 18px 0 8px;
+  color: var(--ink);
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+.consent-document-section .safe-rich-text h3 {
+  margin: 14px 0 6px;
+  color: var(--ink);
+  font-size: 16px;
+  font-weight: 650;
+  line-height: 1.3;
+}
+.consent-document-section .safe-rich-text h2:first-child,
+.consent-document-section .safe-rich-text h3:first-child {
+  margin-top: 0;
+}
+.consent-document-divider {
+  width: 100%;
+  height: 0;
+  margin: 6px 0;
+  border: 0;
+  border-top: 1px solid var(--line-strong);
+}
 .document-actions {
   display: flex;
   justify-content: space-between;
   gap: 12px;
   flex-wrap: wrap;
 }
-.care-forms-landing {
+.care-section,
+.care-forms-landing,
+.care-consents-landing {
   width: min(860px, 100%);
   justify-self: center;
   max-width: 860px;
 }
-.care-form-group h3 {
-  color: var(--muted);
-  font-size: 13px;
-  font-weight: 700;
-  text-transform: uppercase;
-}
-.care-form-card {
+.care-form-card,
+.care-consent-card {
   min-height: 70px;
   padding: 12px 14px;
 }
@@ -543,7 +612,7 @@ label {
   gap: 8px;
 }
 .care-form-information .safe-rich-text {
-  color: var(--text);
+  color: var(--ink);
 }
 .care-choice-field {
   min-inline-size: 0;
@@ -644,23 +713,135 @@ label {
   display: grid;
   gap: 9px;
 }
+.signature-field {
+  min-width: 0;
+  border: 0;
+  margin: 0;
+  padding: 0;
+}
+.signature-mode-tabs,
 .signature-pad-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 12px;
+}
+.signature-mode-tabs {
+  gap: 18px;
+  border-bottom: 1px solid var(--line);
+}
+.signature-mode-tabs button {
+  min-height: 30px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted);
+  padding: 0 0 7px;
+  font-size: 14px;
+  font-weight: 700;
+  transform: none;
+}
+.signature-mode-tabs button.active {
+  border-bottom-color: var(--brand);
+  background: transparent;
+  color: var(--brand-strong);
+}
+.signature-mode-tabs button:hover {
+  border-bottom-color: var(--brand);
+  background: transparent;
+  color: var(--brand-strong);
+  transform: none;
+}
+.signature-mode-tabs button:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 3px;
 }
 button.compact {
   min-height: 34px;
   padding: 7px 10px;
 }
-.signature-canvas {
-  width: 100%;
-  height: 150px;
+.signature-canvas-wrap {
+  position: relative;
+  min-width: 0;
+  overflow: hidden;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: #fff;
+}
+.signature-field[data-invalid="true"] .signature-canvas-wrap {
+  border-color: #d92d20;
+}
+.signature-canvas-wrap::before {
+  content: "";
+  position: absolute;
+  left: 38px;
+  right: 12px;
+  top: 58%;
+  z-index: 1;
+  border-top: 1px solid #6b7280;
+  pointer-events: none;
+}
+.signature-canvas-wrap::after {
+  content: "x";
+  position: absolute;
+  left: 18px;
+  top: calc(58% - 16px);
+  z-index: 1;
+  color: #6b7280;
+  font-size: 18px;
+  line-height: 1;
+  pointer-events: none;
+}
+.signature-canvas {
+  position: relative;
+  z-index: 2;
+  display: block;
+  width: 100%;
+  height: 96px;
+  border: 0;
+  background: transparent;
   touch-action: none;
+}
+.signature-canvas:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 3px;
+}
+.signature-canvas-placeholder {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  color: var(--muted);
+  font-size: 14px;
+}
+.signature-clear {
+  justify-self: start;
+  min-height: 28px;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  line-height: 1.2;
+}
+.signature-type-field,
+.submitted-signature {
+  display: grid;
+  gap: 7px;
+}
+.signature-type-field > span {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+.signature-type-field small,
+.submitted-signature small {
+  color: var(--muted);
+}
+.signature-preview-canvas {
+  height: 96px;
+  touch-action: auto;
 }
 .document-hash {
   overflow-wrap: anywhere;
@@ -977,15 +1158,9 @@ button.compact {
   font-size: 12px;
   font-weight: 600;
 }
-.care-priority-block {
-  border: 1px solid rgba(255, 193, 7, .35);
-  border-radius: var(--radius);
-  background: rgba(255, 247, 230, .52);
-  padding: 16px;
-}
 .care-task-row {
-  border-color: rgba(255, 193, 7, .34);
-  background: rgba(255, 255, 255, .86);
+  border-color: var(--line);
+  background: #fff;
 }
 .care-task-row:hover {
   border-color: var(--brand);
@@ -1010,7 +1185,8 @@ button.compact {
   display: grid;
   gap: 10px;
 }
-.care-appointment-group h3 {
+.care-appointment-group h3,
+.care-form-group h3 {
   color: var(--muted);
   font-size: 13px;
   font-weight: 700;
@@ -1067,6 +1243,16 @@ button.compact {
   font-size: 14px;
   font-weight: 500;
   line-height: 1.45;
+}
+.care-empty-state h2 {
+  margin: 0 0 6px;
+  color: var(--ink);
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+.care-empty-state p {
+  margin: 0;
 }
 .care-facts {
   border: 1px solid var(--line);

@@ -4,6 +4,15 @@ import { describe, expect, it } from 'vitest';
 const source = readFileSync('app/api/core/[...path]/route.ts', 'utf8');
 
 describe('care proxy audit metadata', () => {
+  it('merges chart care tasks into the care overview response', () => {
+    expect(source).toMatch(/async function careOverview/);
+    expect(source).toContain("new URL('/care/overview', allomedApiBasePaths.corePublic)");
+    expect(source).toContain("new URL('/care/overview', allomedApiBasePaths.chartPublic)");
+    expect(source).toMatch(/pendingConsents:\s*arrayPayload\(chartOverview, 'pendingConsents', 'consents'\)/);
+    expect(source).toMatch(/pendingForms:\s*arrayPayload\(chartOverview, 'pendingForms', 'forms'\)/);
+    expect(source).toMatch(/if \(path\[1\] === 'overview'\)/);
+  });
+
   it('adds IP address and user agent to patient form submissions and consent signatures', () => {
     expect(source).toMatch(/function shouldAttachCareAuditMetadata/);
     expect(source).toContain('^\\/care\\/forms\\/[^/]+\\/submit$');

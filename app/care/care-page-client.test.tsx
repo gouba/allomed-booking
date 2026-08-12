@@ -163,6 +163,30 @@ function bootstrap(overrides = {}) {
   };
 }
 
+function consentDocumentSchema() {
+  return {
+    sections: [
+      {
+        id: 'section-1',
+        title: 'Consent section',
+        blocks: [
+          {
+            id: 'consent-body',
+            type: 'PARAGRAPH',
+            label: 'Consent text',
+            content: 'Consent body',
+          },
+          {
+            id: 'consent-signature',
+            type: 'SIGNATURE',
+            label: 'Signature',
+          },
+        ],
+      },
+    ],
+  };
+}
+
 function renderCarePage({
   boot = bootstrap(),
   overview = {},
@@ -316,6 +340,13 @@ describe('CarePageClient overview', () => {
     renderCarePage();
 
     expect(await screen.findByText('Welcome, Karim')).toBeTruthy();
+    expect(screen.getByText('You’re all caught up')).toBeTruthy();
+    expect(
+      screen.getByText(
+        'There’s nothing that needs your attention right now. New appointments, forms, consents, and other updates from your clinic will appear here.',
+      ),
+    ).toBeTruthy();
+    expect(document.querySelector('.care-empty-state')).toBeTruthy();
     expect(
       screen.getByRole('heading', { level: 1, name: 'Clinic 17' }),
     ).toBeTruthy();
@@ -409,6 +440,8 @@ describe('CarePageClient overview', () => {
     ).toBeTruthy();
     expect(screen.getByText('Complete form')).toBeTruthy();
     expect(screen.getByText('Review and sign')).toBeTruthy();
+    expect(screen.queryByText(/Due Jul 24/i)).toBeNull();
+    expect(document.querySelector('.care-priority-block')).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: /Intake form/i }));
 
@@ -1350,6 +1383,9 @@ describe('CarePageClient overview', () => {
     expect(css).toMatch(/\.care-shell\s*{[\s\S]*?max-width:\s*100vw/);
     expect(css).toMatch(/\.care-shell\s*{[\s\S]*?overflow-x:\s*clip/);
     expect(css).toMatch(/\.care-panel\s*{[\s\S]*?min-width:\s*0/);
+    expect(css).toMatch(
+      /\.care-section,\s*\.care-forms-landing,\s*\.care-consents-landing\s*{[\s\S]*?width:\s*min\(860px, 100%\)/,
+    );
     expect(css).toMatch(/\.care-nav-shell\s*{[\s\S]*?min-width:\s*0/);
     expect(css).toMatch(/\.care-nav\s*{[\s\S]*?width:\s*100%/);
     expect(css).toMatch(/\.care-nav\s*{[\s\S]*?max-width:\s*100%/);
@@ -1403,13 +1439,685 @@ describe('CarePageClient overview', () => {
     expect(css).not.toMatch(/\.care-choice-field > legend/);
   });
 
-  it('keeps patient-facing consent signatures patient-only', () => {
+  it('renders a signature guide line and x mark behind the drawing canvas', () => {
+    const css = readFileSync(
+      path.resolve(process.cwd(), 'app/globals.css'),
+      'utf8',
+    );
+
+    expect(css).toMatch(/\.signature-canvas-wrap::before\s*{[\s\S]*?top:\s*58%/);
+    expect(css).toMatch(
+      /\.signature-canvas-wrap::before\s*{[\s\S]*?border-top:\s*1px solid #6b7280/,
+    );
+    expect(css).toMatch(/\.signature-canvas-wrap::after\s*{[\s\S]*?content:\s*"x"/);
+    expect(css).toMatch(/\.signature-canvas\s*{[\s\S]*?background:\s*transparent/);
+  });
+
+  it('renders signature mode controls as compact tabs', () => {
+    const css = readFileSync(
+      path.resolve(process.cwd(), 'app/globals.css'),
+      'utf8',
+    );
     const source = readFileSync(
       path.resolve(process.cwd(), 'app/care/care-page-client.tsx'),
       'utf8',
     );
 
-    expect(source).toMatch(/submitterType:\s*["']PATIENT["']/);
+    expect(source).toMatch(/role="tablist"/);
+    expect(source).toMatch(/role="tab"/);
+    expect(source).toMatch(/aria-selected=\{method === mode\}/);
+    expect(source).not.toMatch(/className=\{method === mode \? 'active secondary' : 'secondary'\}/);
+    expect(css).toMatch(/\.signature-mode-tabs\s*{[\s\S]*?border-bottom:\s*1px solid var\(--line\)/);
+    expect(css).toMatch(/\.signature-mode-tabs button\s*{[\s\S]*?min-height:\s*30px/);
+    expect(css).toMatch(/\.signature-mode-tabs button\s*{[\s\S]*?border-bottom:\s*2px solid transparent/);
+    expect(css).toMatch(/\.signature-mode-tabs button\.active\s*{[\s\S]*?border-bottom-color:\s*var\(--brand\)/);
+  });
+
+  it('keeps the signature clear control compact', () => {
+    const css = readFileSync(
+      path.resolve(process.cwd(), 'app/globals.css'),
+      'utf8',
+    );
+
+    expect(css).toMatch(/\.signature-clear\s*{[\s\S]*?min-height:\s*28px/);
+    expect(css).toMatch(/\.signature-clear\s*{[\s\S]*?padding:\s*4px 8px/);
+    expect(css).toMatch(/\.signature-clear\s*{[\s\S]*?font-size:\s*13px/);
+  });
+
+  it('renders submitted signature timestamp as one electronic signature line', () => {
+    const source = readFileSync(
+      path.resolve(process.cwd(), 'app/care/care-page-client.tsx'),
+      'utf8',
+    );
+
+    expect(source).toContain(
+      "signatureSignedOnAt: 'Electronically signed on {date} at {time}'",
+    );
+    expect(source).toMatch(/function signatureSignedLine/);
+    expect(source).toMatch(/date:\s*formatClinicDate\(signedAt\)/);
+    expect(source).toMatch(/time:\s*formatClinicTime\(signedAt\)/);
+  });
+
+  it('renders consents as a forms-style list with empty groups hidden', async () => {
+    renderCarePage({
+      initialView: 'consents',
+      extraResponses: new Map([
+        [
+          '/care/consents',
+          [
+            {
+              id: 'consent-signed',
+              title: 'Privacy consent',
+              status: 'SIGNED',
+              requestedAt: '2026-08-08T09:24:00',
+            },
+            {
+              id: 'consent-cancelled',
+              title: 'Cancelled consent',
+              status: 'CANCELLED',
+              requestedAt: '2026-08-08T09:24:00',
+            },
+          ],
+        ],
+      ]),
+    });
+
+    expect(await screen.findByRole('heading', { name: 'Consents' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Signed or unavailable' }))
+      .toBeTruthy();
+    expect(screen.getByRole('button', { name: /Privacy consent/i })).toBeTruthy();
+    expect(screen.getByText('Signed')).toBeTruthy();
+    expect(screen.queryByText('Completed')).toBeNull();
+    expect(screen.queryByRole('button', { name: /Cancelled consent/i })).toBeNull();
+    expect(screen.queryByText(/Due Aug 08/i)).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Needs signature' })).toBeNull();
+    expect(screen.queryByText('Consent details')).toBeNull();
+    expect(screen.queryByText('No items.')).toBeNull();
+  });
+
+  it('opens consent detail full page with a back button', async () => {
+    renderCarePage({
+      initialView: 'consents',
+      extraResponses: new Map([
+        [
+          '/care/consents',
+          [
+            {
+              id: 'consent-1',
+              title: 'Treatment consent',
+              status: 'REQUESTED',
+              requestedAt: '2026-08-08T09:24:00',
+            },
+          ],
+        ],
+        [
+          '/care/consents/consent-1',
+          {
+            open: true,
+            title: 'Treatment consent',
+            documentSchema: consentDocumentSchema(),
+            requiredAcknowledgements: [],
+          },
+        ],
+      ]),
+    });
+
+    fireEvent.click(await screen.findByRole('button', { name: /Treatment consent/i }));
+
+    await waitFor(() => {
+      expect(router.push).toHaveBeenCalledWith(
+        '/care?view=consents&resourceId=consent-1',
+      );
+    });
+    expect(await screen.findByRole('heading', { name: 'Treatment consent' }))
+      .toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Back to consents' })).toBeTruthy();
+    expect(screen.queryByText('Consent details')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Back to consents' }));
+
+    await waitFor(() => {
+      expect(router.replace).toHaveBeenCalledWith('/care?view=consents');
+    });
+  });
+
+  it('signs consent without a separate final confirmation checkbox', async () => {
+    renderCarePage({
+      initialView: 'consents',
+      extraResponses: new Map([
+        [
+          '/care/consents',
+          [
+            {
+              id: 'consent-1',
+              title: 'Treatment consent',
+              status: 'REQUESTED',
+              requestedAt: '2026-08-08T09:24:00',
+            },
+          ],
+        ],
+        [
+          '/care/consents/consent-1',
+          {
+            open: true,
+            title: 'Treatment consent',
+            documentSchema: consentDocumentSchema(),
+            requiredAcknowledgements: [],
+          },
+        ],
+      ]),
+    });
+
+    fireEvent.click(await screen.findByRole('button', { name: /Treatment consent/i }));
+
+    expect(await screen.findByRole('heading', { name: 'Treatment consent' }))
+      .toBeTruthy();
+    expect(
+      screen.queryByText(/I confirm that I am signing this consent electronically/i),
+    ).toBeNull();
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Type' }));
+    fireEvent.change(screen.getByLabelText(/Full name/), {
+      target: { value: 'Karim Gouba' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Sign consent' }));
+
+    await waitFor(() => {
+      expect(mockCorePublic).toHaveBeenCalledWith(
+        '/care/consents/consent-1/sign',
+        expect.any(Object),
+      );
+    });
+    const signCall = mockCorePublic.mock.calls.find(
+      ([pathName]) => pathName === '/care/consents/consent-1/sign',
+    );
+    const request = signCall?.[1] as { body?: unknown };
+    const body = JSON.parse(String(request.body));
+    expect(body).toEqual({
+      acknowledgements: {},
+      signatures: {
+        'consent-signature': { method: 'TYPED', typedName: 'Karim Gouba' },
+      },
+    });
+    expect(body).not.toHaveProperty('finalConfirmation');
+  });
+
+  it('shows missing consent signature validation under the signature box', async () => {
+    renderCarePage({
+      initialView: 'consents',
+      extraResponses: new Map([
+        [
+          '/care/consents',
+          [
+            {
+              id: 'consent-1',
+              title: 'Treatment consent',
+              status: 'REQUESTED',
+              requestedAt: '2026-08-08T09:24:00',
+            },
+          ],
+        ],
+        [
+          '/care/consents/consent-1',
+          {
+            open: true,
+            title: 'Treatment consent',
+            documentSchema: consentDocumentSchema(),
+            requiredAcknowledgements: [],
+          },
+        ],
+      ]),
+    });
+
+    fireEvent.click(await screen.findByRole('button', { name: /Treatment consent/i }));
+    expect(await screen.findByRole('heading', { name: 'Treatment consent' }))
+      .toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Sign consent' }));
+
+    const signatureField = document.querySelector(
+      '[data-field-id="consent-signature"]',
+    );
+    expect(signatureField?.textContent).toContain(
+      'Please complete the signing details.',
+    );
+    expect(signatureField?.getAttribute('data-invalid')).toBe('true');
+    const css = readFileSync(
+      path.resolve(process.cwd(), 'app/globals.css'),
+      'utf8',
+    );
+    expect(css).toMatch(
+      /\.signature-field\[data-invalid="true"\] \.signature-canvas-wrap\s*{[\s\S]*?border-color:\s*#d92d20/,
+    );
+    expect(screen.getByRole('heading', { name: 'Treatment consent' }))
+      .toBeTruthy();
+    expect(document.querySelector('.notice.danger')).toBeNull();
+    expect(mockCorePublic).not.toHaveBeenCalledWith(
+      '/care/consents/consent-1/sign',
+      expect.any(Object),
+    );
+  });
+
+  it('shows consent signature and acknowledgement validation together', async () => {
+    renderCarePage({
+      initialView: 'consents',
+      extraResponses: new Map([
+        [
+          '/care/consents',
+          [
+            {
+              id: 'consent-1',
+              title: 'Treatment consent',
+              status: 'REQUESTED',
+              requestedAt: '2026-08-08T09:24:00',
+            },
+          ],
+        ],
+        [
+          '/care/consents/consent-1',
+          {
+            open: true,
+            title: 'Treatment consent',
+            documentSchema: {
+              sections: [
+                {
+                  id: 'section-1',
+                  title: 'Consent section',
+                  blocks: [
+                    {
+                      id: 'consent-body',
+                      type: 'PARAGRAPH',
+                      label: 'Consent text',
+                      content: 'Consent body',
+                    },
+                    {
+                      id: 'ack-1',
+                      type: 'ACKNOWLEDGEMENT',
+                      label: 'Acknowledgement',
+                      content:
+                        'I acknowledge that I have read and understood this consent.',
+                      required: true,
+                    },
+                    {
+                      id: 'consent-signature',
+                      type: 'SIGNATURE',
+                      label: 'Signature',
+                    },
+                  ],
+                },
+              ],
+            },
+            requiredAcknowledgements: [],
+          },
+        ],
+      ]),
+    });
+
+    fireEvent.click(await screen.findByRole('button', { name: /Treatment consent/i }));
+    expect(await screen.findByRole('heading', { name: 'Treatment consent' }))
+      .toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Sign consent' }));
+
+    expect(screen.getByText('Please complete the signing details.'))
+      .toBeTruthy();
+    expect(screen.getByText('Please complete the required acknowledgement.'))
+      .toBeTruthy();
+    expect(mockCorePublic).not.toHaveBeenCalledWith(
+      '/care/consents/consent-1/sign',
+      expect.any(Object),
+    );
+  });
+
+  it('renders consent acknowledgements at their document block position', async () => {
+    const css = readFileSync(
+      path.resolve(process.cwd(), 'app/globals.css'),
+      'utf8',
+    );
+
+    renderCarePage({
+      initialView: 'consents',
+      extraResponses: new Map([
+        [
+          '/care/consents',
+          [
+            {
+              id: 'consent-1',
+              title: 'Treatment consent',
+              status: 'REQUESTED',
+              requestedAt: '2026-08-08T09:24:00',
+            },
+          ],
+        ],
+        [
+          '/care/consents/consent-1',
+          {
+            open: true,
+            title: 'Treatment consent',
+            documentSchema: {
+              sections: [
+                {
+                  id: 'section-1',
+                  title: 'Consent section',
+                  blocks: [
+                    {
+                      id: 'consent-body',
+                      type: 'PARAGRAPH',
+                      label: 'Consent text',
+                      content: 'Consent body',
+                    },
+                    {
+                      id: 'ack-1',
+                      type: 'ACKNOWLEDGEMENT',
+                      label: 'Acknowledgement',
+                      content:
+                        'I acknowledge that I have read and understood this consent.',
+                      required: true,
+                    },
+                    {
+                      id: 'consent-signature',
+                      type: 'SIGNATURE',
+                      label: 'Signature',
+                    },
+                  ],
+                },
+              ],
+            },
+            requiredAcknowledgements: [
+              {
+                id: 'legacy-ack',
+                label: 'Legacy bottom acknowledgement',
+              },
+            ],
+          },
+        ],
+      ]),
+    });
+
+    fireEvent.click(await screen.findByRole('button', { name: /Treatment consent/i }));
+    expect(
+      await screen.findByText(
+        /I acknowledge that I have read and understood this consent\./,
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText('Legacy bottom acknowledgement')).toBeNull();
+    expect(css).toMatch(
+      /\.consent-acknowledgement-block\s*{[\s\S]*?grid-template-columns:\s*18px minmax\(0, 1fr\)[\s\S]*?align-items:\s*center/,
+    );
+    expect(css).toMatch(
+      /\.consent-acknowledgement-block input\[type="checkbox"\]\s*{[\s\S]*?height:\s*18px[\s\S]*?margin:\s*0/,
+    );
+  });
+
+  it('renders consent body content with form section heading styles', async () => {
+    const source = readFileSync(
+      path.resolve(process.cwd(), 'app/care/care-page-client.tsx'),
+      'utf8',
+    );
+    const css = readFileSync(
+      path.resolve(process.cwd(), 'app/globals.css'),
+      'utf8',
+    );
+
+    renderCarePage({
+      initialView: 'consents',
+      extraResponses: new Map([
+        [
+          '/care/consents',
+          [
+            {
+              id: 'consent-1',
+              title: 'Treatment consent',
+              status: 'REQUESTED',
+              requestedAt: '2026-08-08T09:24:00',
+            },
+          ],
+        ],
+        [
+          '/care/consents/consent-1',
+          {
+            open: true,
+            title: 'Treatment consent',
+            documentSchema: {
+              sections: [
+                {
+                  id: 'section-1',
+                  title: 'Consent section',
+                  blocks: [
+                    {
+                      id: 'consent-body',
+                      type: 'PARAGRAPH',
+                      label: 'Consent text',
+                      content: 'Consent body',
+                    },
+                    {
+                      id: 'consent-divider',
+                      type: 'DIVIDER',
+                      label: 'Divider',
+                    },
+                  ],
+                },
+              ],
+            },
+            requiredAcknowledgements: [],
+          },
+        ],
+      ]),
+    });
+
+    fireEvent.click(await screen.findByRole('button', { name: /Treatment consent/i }));
+
+    const sectionHeading = await screen.findByRole('heading', {
+      level: 3,
+      name: 'Consent section',
+    });
+    expect(sectionHeading.closest('.document-section-heading')).toBeTruthy();
+    expect(screen.getByText('Consent body')).toBeTruthy();
+    expect(document.querySelector('hr.consent-document-divider')).toBeTruthy();
+    expect(source).toMatch(/function ConsentDocumentSections/);
+    expect(source).toMatch(/function normalizeConsentDocument/);
+    expect(source).not.toMatch(
+      new RegExp(['function consentBody', 'Sections'].join('')),
+    );
+    expect(source).toMatch(/<h3>\{section\.title\}<\/h3>/);
+    expect(css).toMatch(/\.document-section h3\s*{[\s\S]*?font-weight:\s*700/);
+    expect(css).toMatch(
+      /\.document-section-heading\s*{[\s\S]*?align-items:\s*baseline/,
+    );
+    expect(css).toMatch(
+      /\.consent-document-section \.safe-rich-text h2\s*{[\s\S]*?font-size:\s*20px[\s\S]*?line-height:\s*1\.2/,
+    );
+    expect(css).toMatch(
+      /\.consent-document-section \.safe-rich-text h3\s*{[\s\S]*?font-size:\s*16px[\s\S]*?line-height:\s*1\.3/,
+    );
+    expect(css).toMatch(
+      /\.consent-document-divider\s*{[\s\S]*?width:\s*100%[\s\S]*?border-top:\s*1px solid var\(--line-strong\)/,
+    );
+  });
+
+  it('renders italic rich text inside consent documents', async () => {
+    const css = readFileSync(
+      path.resolve(process.cwd(), 'app/globals.css'),
+      'utf8',
+    );
+
+    renderCarePage({
+      initialView: 'consents',
+      extraResponses: new Map([
+        [
+          '/care/consents',
+          [
+            {
+              id: 'consent-1',
+              title: 'Treatment consent',
+              status: 'REQUESTED',
+              requestedAt: '2026-08-08T09:24:00',
+            },
+          ],
+        ],
+        [
+          '/care/consents/consent-1',
+          {
+            open: true,
+            title: 'Treatment consent',
+            documentSchema: {
+              sections: [
+                {
+                  id: 'section-1',
+                  title: 'Consent section',
+                  blocks: [
+                    {
+                      id: 'rich-1',
+                      type: 'RICH_TEXT',
+                      label: 'Rich text',
+                      content:
+                        '<p>Please read the <em>important</em> consent terms.</p>',
+                    },
+                  ],
+                },
+              ],
+            },
+            requiredAcknowledgements: [],
+          },
+        ],
+      ]),
+    });
+
+    fireEvent.click(await screen.findByRole('button', { name: /Treatment consent/i }));
+
+    const italicText = await screen.findByText('important');
+    expect(italicText.tagName).toBe('EM');
+    expect(
+      italicText.closest('.consent-document-section .safe-rich-text'),
+    ).toBeTruthy();
+    expect(css).toMatch(
+      /\.safe-rich-text em,\s*\.safe-rich-text em \*,[\s\S]*?\.safe-rich-text \[style\*="font-style" i\]\[style\*="italic" i\],[\s\S]*?font-synthesis:\s*style[\s\S]*?font-style:\s*italic !important/,
+    );
+    expect(css).toMatch(/\.safe-rich-text p\s*{[\s\S]*?margin:\s*0 0 0px/);
+  });
+
+  it('renders quote rich text inside consent documents with a left border', async () => {
+    const css = readFileSync(
+      path.resolve(process.cwd(), 'app/globals.css'),
+      'utf8',
+    );
+
+    renderCarePage({
+      initialView: 'consents',
+      extraResponses: new Map([
+        [
+          '/care/consents',
+          [
+            {
+              id: 'consent-1',
+              title: 'Treatment consent',
+              status: 'REQUESTED',
+              requestedAt: '2026-08-08T09:24:00',
+            },
+          ],
+        ],
+        [
+          '/care/consents/consent-1',
+          {
+            open: true,
+            title: 'Treatment consent',
+            documentSchema: {
+              sections: [
+                {
+                  id: 'section-1',
+                  title: 'Consent section',
+                  blocks: [
+                    {
+                      id: 'rich-quote',
+                      type: 'RICH_TEXT',
+                      label: 'Rich text',
+                      content:
+                        '<p>Before quote</p><blockquote><p>Quoted consent text</p></blockquote>',
+                    },
+                  ],
+                },
+              ],
+            },
+            requiredAcknowledgements: [],
+          },
+        ],
+      ]),
+    });
+
+    fireEvent.click(await screen.findByRole('button', { name: /Treatment consent/i }));
+
+    const quote = await screen.findByText('Quoted consent text');
+    expect(quote.closest('blockquote')).toBeTruthy();
+    expect(quote.closest('.consent-document-section .safe-rich-text'))
+      .toBeTruthy();
+    const blockquoteRule =
+      css.match(/\.safe-rich-text blockquote\s*{[^}]*}/)?.[0] ?? '';
+    expect(css).toMatch(
+      /\.safe-rich-text blockquote\s*{[\s\S]*?margin:\s*10px 0 12px 12px[\s\S]*?border-left:\s*3px solid var\(--line-strong\)[\s\S]*?padding:\s*8px 12px 8px 14px/,
+    );
+    expect(blockquoteRule).not.toContain('background:');
+  });
+
+  it('renders signed consent signatures with the same electronic signature line', async () => {
+    renderCarePage({
+      initialView: 'consents',
+      initialResourceId: 'consent-signed',
+      extraResponses: new Map([
+        [
+          '/care/consents',
+          [
+            {
+              id: 'consent-signed',
+              title: 'Treatment consent',
+              status: 'SIGNED',
+              requestedAt: '2026-08-08T09:00:00',
+            },
+          ],
+        ],
+        [
+          '/care/consents/consent-signed',
+          {
+            open: false,
+            title: 'Treatment consent',
+            documentSchema: consentDocumentSchema(),
+            signature: {
+              signedAt: '2026-08-08T09:24:00',
+              signature: {
+                method: 'TYPED',
+                typedName: 'Karim Gouba',
+              },
+            },
+          },
+        ],
+      ]),
+    });
+
+    expect(await screen.findByRole('heading', { name: 'Treatment consent' }))
+      .toBeTruthy();
+    const signedNotice = screen.getByText('Signed');
+    const consentTitle = screen.getByRole('heading', {
+      level: 2,
+      name: 'Treatment consent',
+    });
+    expect(
+      signedNotice.compareDocumentPosition(consentTitle) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(screen.queryByText('Completed')).toBeNull();
+    expect(screen.getByText('Karim Gouba')).toBeTruthy();
+    expect(
+      screen.getByText(/Electronically signed on Aug 08 at 09:24/),
+    ).toBeTruthy();
+    expect(screen.queryByText(/Electronically signed -/)).toBeNull();
+  });
+
+  it('does not send trusted submitter metadata from patient-facing consent signatures', () => {
+    const source = readFileSync(
+      path.resolve(process.cwd(), 'app/care/care-page-client.tsx'),
+      'utf8',
+    );
+
+    expect(source).not.toMatch(/submitterType:\s*["']PATIENT["']/);
+    expect(source).not.toMatch(/submitterRelationshipToPatient/);
   });
 
   it('marks the active route with active state and aria-current', async () => {
@@ -2258,7 +2966,15 @@ describe('CarePageClient overview', () => {
       'Submitted note',
     );
     expect(screen.queryByText('1 of 2 sections')).toBeNull();
-    expect(screen.getByText('Completed')).toBeTruthy();
+    const completedNotice = screen.getByText('Completed');
+    const formTitle = screen.getByRole('heading', {
+      level: 2,
+      name: 'Consent history',
+    });
+    expect(
+      completedNotice.compareDocumentPosition(formTitle) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Save progress' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Submit form' })).toBeNull();
   });
