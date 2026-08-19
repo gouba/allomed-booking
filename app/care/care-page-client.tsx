@@ -213,6 +213,7 @@ type CareCopyKey =
   | 'appointmentStatusConfirmed'
   | 'appointmentStatusNoShow'
   | 'appointmentStatusPendingConfirmation'
+  | 'appointmentStatusPendingRescheduleConfirmation'
   | 'appointmentDetails'
   | 'actions'
   | 'address'
@@ -356,6 +357,8 @@ const careCopy = {
     appointmentStatusConfirmed: 'Confirmed',
     appointmentStatusNoShow: 'No show',
     appointmentStatusPendingConfirmation: 'Pending confirmation',
+    appointmentStatusPendingRescheduleConfirmation:
+      'Pending reschedule confirmation',
     appointmentDetails: 'Appointment details',
     actions: 'Actions',
     address: 'Address',
@@ -506,6 +509,8 @@ const careCopy = {
     appointmentStatusConfirmed: 'Confirme',
     appointmentStatusNoShow: 'Absence',
     appointmentStatusPendingConfirmation: 'Confirmation en attente',
+    appointmentStatusPendingRescheduleConfirmation:
+      'Confirmation du changement en attente',
     appointmentDetails: 'Details du rendez-vous',
     actions: 'Actions',
     address: 'Adresse',
@@ -3788,6 +3793,8 @@ function getPatientVisibleAppointmentStatus(status?: string | null) {
       return '';
     case 'PENDING_CONFIRMATION':
       return t('appointmentStatusPendingConfirmation');
+    case 'PENDING_RESCHEDULE_CONFIRMATION':
+      return t('appointmentStatusPendingRescheduleConfirmation');
     case 'CONFIRMED':
       return t('appointmentStatusConfirmed');
     case 'CHECKED_IN':
